@@ -203,7 +203,7 @@ DEFINE_HOOK(0x41EAC0, AITriggerTypeClass_ConditionMet_Gate, 0x5)
 // Uncomment during development to verify INI read is working.
 // ============================================================================
 
-/*
+
 DEFINE_HOOK(0x41E720, AITriggerTypeClass_ConditionMet_Diag, 0x6)
 {
     GET(AITriggerTypeClass*, pThis, ECX);
@@ -225,4 +225,4 @@ DEFINE_HOOK(0x41E720, AITriggerTypeClass_ConditionMet_Diag, 0x6)
     }
     return 0;
 }
-*/
+
