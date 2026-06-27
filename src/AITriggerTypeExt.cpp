@@ -28,7 +28,7 @@ bool __stdcall DllMain(HANDLE hInstance, DWORD dwReason, LPVOID)
 
 SYRINGE_HANDSHAKE(pInfo)
 {
-    pInfo->Message = "AITriggerTypeExt";
+    pInfo->Message = const_cast<char*>("AITriggerTypeExt");
     return S_OK;
 }
 
