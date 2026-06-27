@@ -33,9 +33,9 @@ static void ReadIntList(
         out.clear();
         char* raw = exINI.value();
         char* ctx = nullptr;
-        for (char* tok = strtok_s(raw, Phobos::readDelims, &ctx);
+        for (char* tok = strtok_s(raw, ",", &ctx);
              tok;
-             tok = strtok_s(nullptr, Phobos::readDelims, &ctx))
+             tok = strtok_s(nullptr, ",", &ctx))
         {
             char* end = nullptr;
             long v = strtol(tok, &end, 10);
@@ -59,9 +59,9 @@ static void ReadTechnoTypeList(
         out.clear();
         char* raw = exINI.value();
         char* ctx = nullptr;
-        for (char* tok = strtok_s(raw, Phobos::readDelims, &ctx);
+        for (char* tok = strtok_s(raw, ",", &ctx);
              tok;
-             tok = strtok_s(nullptr, Phobos::readDelims, &ctx))
+             tok = strtok_s(nullptr, ",", &ctx))
         {
             TechnoTypeClass* pType = nullptr;
 
@@ -91,9 +91,9 @@ static void ReadBuildingTypeList(
         out.clear();
         char* raw = exINI.value();
         char* ctx = nullptr;
-        for (char* tok = strtok_s(raw, Phobos::readDelims, &ctx);
+        for (char* tok = strtok_s(raw, ",", &ctx);
              tok;
-             tok = strtok_s(nullptr, Phobos::readDelims, &ctx))
+             tok = strtok_s(nullptr, ",", &ctx))
         {
             if (auto* p = BuildingTypeClass::Find(tok))
                 out.push_back(p);
@@ -115,9 +115,9 @@ static void ReadSWTypeList(
         out.clear();
         char* raw = exINI.value();
         char* ctx = nullptr;
-        for (char* tok = strtok_s(raw, Phobos::readDelims, &ctx);
+        for (char* tok = strtok_s(raw, ",", &ctx);
              tok;
-             tok = strtok_s(nullptr, Phobos::readDelims, &ctx))
+             tok = strtok_s(nullptr, ",", &ctx))
         {
             if (auto* p = SuperWeaponTypeClass::Find(tok))
                 out.push_back(p);
@@ -213,21 +213,20 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     // Target / Allies mode
     // -----------------------------------------------------------------------
     {
-        char buf[32] = {};
-        if (exINI.ReadString(section, "TargetHouseMode", buf, sizeof(buf)))
+        if (exINI.ReadString(section, "TargetHouseMode"))
         {
-            if      (_stricmp(buf, "Any")            == 0) TargetHouseMode = AIExtTargetHouseMode::Any;
-            else if (_stricmp(buf, "All")            == 0) TargetHouseMode = AIExtTargetHouseMode::All;
-            else if (_stricmp(buf, "Most_Buildings") == 0) TargetHouseMode = AIExtTargetHouseMode::MostBuildings;
-            else if (_stricmp(buf, "Least_Buildings")== 0) TargetHouseMode = AIExtTargetHouseMode::LeastBuildings;
-            else if (_stricmp(buf, "Most_Units")     == 0) TargetHouseMode = AIExtTargetHouseMode::MostUnits;
-            else if (_stricmp(buf, "Least_Units")    == 0) TargetHouseMode = AIExtTargetHouseMode::LeastUnits;
+            if      (_stricmp(exINI.value(), "Any")            == 0) TargetHouseMode = AIExtTargetHouseMode::Any;
+            else if (_stricmp(exINI.value(), "All")            == 0) TargetHouseMode = AIExtTargetHouseMode::All;
+            else if (_stricmp(exINI.value(), "Most_Buildings") == 0) TargetHouseMode = AIExtTargetHouseMode::MostBuildings;
+            else if (_stricmp(exINI.value(), "Least_Buildings")== 0) TargetHouseMode = AIExtTargetHouseMode::LeastBuildings;
+            else if (_stricmp(exINI.value(), "Most_Units")     == 0) TargetHouseMode = AIExtTargetHouseMode::MostUnits;
+            else if (_stricmp(exINI.value(), "Least_Units")    == 0) TargetHouseMode = AIExtTargetHouseMode::LeastUnits;
             else                                           TargetHouseMode = AIExtTargetHouseMode::Current;
         }
 
-        if (exINI.ReadString(section, "RequiredAlliesMode", buf, sizeof(buf)))
+        if (exINI.ReadString(section, "RequiredAlliesMode"))
         {
-            if (_stricmp(buf, "All") == 0) AlliesMode = AIExtAlliesMode::All;
+            if (_stricmp(exINI.value(), "All") == 0) AlliesMode = AIExtAlliesMode::All;
             else                           AlliesMode = AIExtAlliesMode::Any;
         }
     }
@@ -602,12 +601,12 @@ HouseClass* AITriggerTypeExt::ExtData::ResolveTargetHouse(
         bool wantMost = (mode == AIExtTargetHouseMode::MostBuildings ||
                          mode == AIExtTargetHouseMode::MostUnits);
 
-        for (int i = 0; i < HouseClass::Array->Count; ++i)
+        for (int i = 0; i < HouseClass::Array.Count; ++i)
         {
-            auto const pH = HouseClass::Array->Items[i];
+            auto const pH = HouseClass::Array.Items[i];
             if (!pH || pH == pCallingHouse) continue;
             if (pH->IsNeutral()) continue;
-            if (pH->IsDefeated) continue;
+            if (pH->Defeated) continue;
             if (pCallingHouse->IsAlliedWith(pH)) continue; // skip allies
 
             int score = (mode == AIExtTargetHouseMode::MostBuildings ||
@@ -690,12 +689,12 @@ bool AITriggerTypeExt::ExtData::CheckEnemy(
     if (mode == AIExtTargetHouseMode::Any)
     {
         // Any enemy house satisfying all checks is enough.
-        for (int i = 0; i < HouseClass::Array->Count; ++i)
+        for (int i = 0; i < HouseClass::Array.Count; ++i)
         {
-            auto const pH = HouseClass::Array->Items[i];
+            auto const pH = HouseClass::Array.Items[i];
             if (!pH || pH == pCallingHouse) continue;
             if (pH->IsNeutral()) continue;
-            if (pH->IsDefeated) continue;
+            if (pH->Defeated) continue;
             if (pCallingHouse->IsAlliedWith(pH)) continue;
             if (CheckOneEnemy(pH)) return true;
         }
@@ -706,12 +705,12 @@ bool AITriggerTypeExt::ExtData::CheckEnemy(
     {
         // All enemy houses must satisfy all checks.
         bool foundAny = false;
-        for (int i = 0; i < HouseClass::Array->Count; ++i)
+        for (int i = 0; i < HouseClass::Array.Count; ++i)
         {
-            auto const pH = HouseClass::Array->Items[i];
+            auto const pH = HouseClass::Array.Items[i];
             if (!pH || pH == pCallingHouse) continue;
             if (pH->IsNeutral()) continue;
-            if (pH->IsDefeated) continue;
+            if (pH->Defeated) continue;
             if (pCallingHouse->IsAlliedWith(pH)) continue;
             foundAny = true;
             if (!CheckOneEnemy(pH)) return false;
@@ -758,12 +757,12 @@ bool AITriggerTypeExt::ExtData::CheckAllies(HouseClass* const pCallingHouse) con
     bool wantAll = (AlliesMode.Get() == AIExtAlliesMode::All);
     bool foundAny = false;
 
-    for (int i = 0; i < HouseClass::Array->Count; ++i)
+    for (int i = 0; i < HouseClass::Array.Count; ++i)
     {
-        auto const pH = HouseClass::Array->Items[i];
+        auto const pH = HouseClass::Array.Items[i];
         if (!pH || pH == pCallingHouse) continue;
         if (pH->IsNeutral()) continue;
-        if (pH->IsDefeated) continue;
+        if (pH->Defeated) continue;
         if (!pCallingHouse->IsAlliedWith(pH)) continue; // must be allied
 
         foundAny = true;
@@ -798,9 +797,9 @@ bool AITriggerTypeExt::ExtData::CheckNeutral() const
 
     // Find the neutral house
     HouseClass* pNeutral = nullptr;
-    for (int i = 0; i < HouseClass::Array->Count; ++i)
+    for (int i = 0; i < HouseClass::Array.Count; ++i)
     {
-        auto const pH = HouseClass::Array->Items[i];
+        auto const pH = HouseClass::Array.Items[i];
         if (pH && pH->IsNeutral())
         {
             pNeutral = pH;
