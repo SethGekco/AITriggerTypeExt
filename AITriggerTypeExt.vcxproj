@@ -22,9 +22,14 @@
   <!-- Source files -->
   <ItemGroup>
     <ClCompile Include="src\AITriggerTypeExt.cpp" />
+    <ClCompile Include="src\Phobos.cpp" />
     <ClCompile Include="src\Ext\AITriggerType\Body.cpp" />
     <ClCompile Include="src\Ext\AITriggerType\Hooks.cpp" />
     <ClCompile Include="YRpp\StaticInits.cpp" />
+    <!-- Phobos utility implementations -->
+    <ClCompile Include="Phobos\src\Utilities\Debug.cpp" />
+    <ClCompile Include="Phobos\src\Utilities\Stream.cpp" />
+    <ClCompile Include="Phobos\src\Utilities\Patch.cpp" />
   </ItemGroup>
 
   <!-- Header files -->

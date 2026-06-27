@@ -1,5 +1,6 @@
 #include "AITriggerTypeExt.h"
 
+#include <Phobos.h>
 #include <Utilities/Patch.h>
 #include <Utilities/Debug.h>
 #include <Utilities/Macro.h>
@@ -17,7 +18,10 @@ void AITriggerTypeExtDLL::ExeRun()
 bool __stdcall DllMain(HANDLE hInstance, DWORD dwReason, LPVOID)
 {
     if (dwReason == DLL_PROCESS_ATTACH)
+    {
         AITriggerTypeExtDLL::hInstance = hInstance;
+        Phobos::hInstance = hInstance; // needed by Patch::ApplyStatic
+    }
     return true;
 }
 

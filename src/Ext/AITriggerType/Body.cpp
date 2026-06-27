@@ -1004,16 +1004,7 @@ AITriggerTypeExt::ExtContainer::~ExtContainer() = default;
 // Container hooks
 // ============================================================================
 
-// CTOR — confirmed address 0x41E350
-// Allocates ExtData for every newly constructed AITriggerTypeClass.
-// Hook size 5: verify first instruction at 0x41E350 covers >= 5 bytes.
-// Typically the function prolog (PUSH EBP / MOV EBP, ESP) covers exactly 5.
-DEFINE_HOOK(0x41E350, AITriggerTypeClass_CTOR, 0x5)
-{
-    GET(AITriggerTypeClass*, pItem, ECX);
-    AITriggerTypeExt::ExtMap.TryAllocate(pItem);
-    return 0;
-}
+// CTOR hook is in Hooks.cpp
 
 // DTOR — *** ADDRESS UNCONFIRMED, see DISASM_GUIDE.md ***
 /*
