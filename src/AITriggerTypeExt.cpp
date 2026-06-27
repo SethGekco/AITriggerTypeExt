@@ -1,6 +1,7 @@
 #include "AITriggerTypeExt.h"
 
 #include <Phobos.h>
+#include <Syringe.h>
 #include <Utilities/Patch.h>
 #include <Utilities/Debug.h>
 #include <Utilities/Macro.h>
@@ -23,6 +24,12 @@ bool __stdcall DllMain(HANDLE hInstance, DWORD dwReason, LPVOID)
         Phobos::hInstance = hInstance; // needed by Patch::ApplyStatic
     }
     return true;
+}
+
+SYRINGE_HANDSHAKE(pInfo)
+{
+    pInfo->Message = "AITriggerTypeExt";
+    return S_OK;
 }
 
 // Hook into the game's main loop start so our patches apply at the right time
