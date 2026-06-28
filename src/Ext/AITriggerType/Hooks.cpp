@@ -209,34 +209,15 @@ DEFINE_HOOK(0x41E720, AITriggerTypeClass_ConditionMet_Diag, 0x6)
 
     auto const pExt = AITriggerTypeExt::ExtMap.Find(pThis);
     if (!pExt) return 0;
-
-    // Only log triggers that have enemy building requirements
     if (pExt->EnemyBuildings.empty()) return 0;
 
-    // ECX = pThis at entry. The calling house and target house are on the stack.
-    // [ESP+8] = pCallingHouse, [ESP+0xC] = pTargetHouse (stdcall args to ConditionMet)
-    GET_STACK(HouseClass*, pOwner, 0x8);
-    GET_STACK(HouseClass*, pEnemy, 0xC);
-
-    // Count actual GAWEAP on enemy
-    int enemyActualCount = 0;
-    if (pEnemy && !pExt->EnemyBuildings.Types.empty() && pExt->EnemyBuildings.Types[0])
-        enemyActualCount = pEnemy->CountOwnedAndPresent(pExt->EnemyBuildings.Types[0]);
-
-    int ownerActualCount = 0;
-    if (pOwner && !pExt->OwnerBuildings.Types.empty() && pExt->OwnerBuildings.Types[0])
-        ownerActualCount = pOwner->CountOwnedAndPresent(pExt->OwnerBuildings.Types[0]);
-
     int enemyMax = pExt->EnemyBuildings.GetMax(0);
+    int ownerMin = pExt->OwnerBuildings.GetMin(0);
 
     Debug::Log(
-        "[AITriggerTypeExt] Diag '%s': owner=%s ownerCount=%d "
-        "enemy=%s enemyCount=%d enemyMax=%d\n",
+        "[AITriggerTypeExt] Diag '%s': ownerMin=%d enemyMax=%d\n",
         pThis->ID,
-        pOwner ? pOwner->Type->ID : "null",
-        ownerActualCount,
-        pEnemy ? pEnemy->Type->ID : "null",
-        enemyActualCount,
+        ownerMin,
         enemyMax
     );
 
