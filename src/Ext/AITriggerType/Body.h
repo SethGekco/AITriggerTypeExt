@@ -344,6 +344,68 @@ public:
         // -----------------------------------------------------------------------
         Nullable<int> ElapsedTimeMin;
         Nullable<int> ElapsedTimeMax;
+        // -----------------------------------------------------------------------
+        // DEBUG — overlay (CSF-localized message shown in game HUD)
+        // [MyTrigger.AIExt]
+        //   DebugMessageDisplay.Start=STT:AI_RUSH_STARTED
+        //   DebugMessageDisplay.Cancel=STT:AI_RUSH_CANCELLED
+        //   DebugMessageDisplay.Finish=STT:AI_RUSH_DEPLOYED
+        // Shown when [Debug].DisplayAIWaveMessages is 'yes' or 'both'.
+        // -----------------------------------------------------------------------
+        CSFText DebugMessageDisplay_Start;
+        CSFText DebugMessageDisplay_Cancel;
+        CSFText DebugMessageDisplay_Finish;
+
+        // -----------------------------------------------------------------------
+        // DEBUG — log file (raw ASCII string; written to debug.log)
+        //   DebugLog.Start=TT_TANK_RUSH started building
+        //   DebugLog.Cancel=TT_TANK_RUSH vetoed by AIExt
+        //   DebugLog.Finish=TT_TANK_RUSH deployed team
+        // Written when [Debug].DisplayAIWaveMessages is 'log' or 'both'.
+        // -----------------------------------------------------------------------
+        std::string DebugLog_Start;
+        std::string DebugLog_Cancel;
+        std::string DebugLog_Finish;
+
+        // -----------------------------------------------------------------------
+        // DEBUG — per-condition auto-verbose log flags
+        //   RequiredOwnerBuildings.DebugLog=yes
+        // Emits detailed log lines showing each entry, range, actual value,
+        // and pass/fail status. See EmitConditionLog in Body.cpp.
+        // -----------------------------------------------------------------------
+        bool DebugLog_OwnerBuildings      = false;
+        bool DebugLog_OwnerUnits          = false;
+        bool DebugLog_OwnerSuperWeapons   = false;
+        bool DebugLog_OwnerCredits        = false;
+        bool DebugLog_OwnerPower          = false;
+        bool DebugLog_OwnerPowerOutput    = false;
+        bool DebugLog_OwnerTechLevel      = false;
+
+        bool DebugLog_EnemyBuildings      = false;
+        bool DebugLog_EnemyUnits          = false;
+        bool DebugLog_EnemySuperWeapons   = false;
+        bool DebugLog_EnemyCredits        = false;
+        bool DebugLog_EnemyPower          = false;
+        bool DebugLog_EnemyPowerOutput    = false;
+        bool DebugLog_EnemyTechLevel      = false;
+
+        bool DebugLog_AlliesBuildings     = false;
+        bool DebugLog_AlliesUnits         = false;
+        bool DebugLog_AlliesSuperWeapons  = false;
+        bool DebugLog_AlliesCredits       = false;
+        bool DebugLog_AlliesPower         = false;
+        bool DebugLog_AlliesPowerOutput   = false;
+        bool DebugLog_AlliesTechLevel     = false;
+
+        bool DebugLog_NeutralBuildings    = false;
+        bool DebugLog_NeutralUnits        = false;
+        bool DebugLog_NeutralSuperWeapons = false;
+        bool DebugLog_NeutralCredits      = false;
+        bool DebugLog_NeutralPower        = false;
+        bool DebugLog_NeutralPowerOutput  = false;
+        bool DebugLog_NeutralTechLevel    = false;
+
+        bool DebugLog_ElapsedTime         = false;
 
         // -----------------------------------------------------------------------
         // Constructor
@@ -398,6 +460,12 @@ public:
             , NeutralTechLevelMax {}
             , ElapsedTimeMin  {}
             , ElapsedTimeMax  {}
+            , DebugMessageDisplay_Start  {}
+            , DebugMessageDisplay_Cancel {}
+            , DebugMessageDisplay_Finish {}
+            , DebugLog_Start  {}
+            , DebugLog_Cancel {}
+            , DebugLog_Finish {}
         { }
 
         virtual ~ExtData() = default;
@@ -492,4 +560,27 @@ public:
     static ExtContainer ExtMap;
     static bool LoadGlobals(PhobosStreamReader& Stm);
     static bool SaveGlobals(PhobosStreamWriter& Stm);
+
+    // ============================================================================
+    // DEBUG DISPLAY MODE
+    // Global toggle read from [Debug].DisplayAIWaveMessages in rulesmd.ini.
+    // Off     = no debug output
+    // Overlay = show CSF messages in game HUD only
+    // Log     = write to debug.log only
+    // Both    = both
+    // ============================================================================
+    enum class DebugDisplayMode
+    {
+        Off     = 0,
+        Overlay = 1,
+        Log     = 2,
+        Both    = 3,
+    };
+
+    static DebugDisplayMode GetDebugMode();
+
+    // Lifecycle debug emitters — called from Hooks.cpp gate hook
+    static void EmitDebugStart (ExtData* pExt, AITriggerTypeClass* pThis);
+    static void EmitDebugCancel(ExtData* pExt, AITriggerTypeClass* pThis);
+    static void EmitDebugFinish(ExtData* pExt, AITriggerTypeClass* pThis);
 };

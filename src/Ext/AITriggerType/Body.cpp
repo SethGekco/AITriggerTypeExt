@@ -10,6 +10,7 @@
 #include <AircraftClass.h>
 #include <Utilities/Macro.h>
 #include <Utilities/Debug.h>
+#include <MessageListClass.h>
 
 // ============================================================================
 // Static member definitions
@@ -179,6 +180,22 @@ static void ReadNullableInt(
     int buf = 0;
     if (exINI.ReadInteger(pSection, pKey, &buf))
         out = buf;
+}
+
+// Read a bool from yes/no/true/false/1/0 into a plain bool ref
+static void ReadBoolFlag(
+    INI_EX& exINI,
+    const char* pSection,
+    const char* pKey,
+    bool& out)
+{
+    if (exINI.ReadString(pSection, pKey))
+    {
+        const char* v = exINI.value();
+        out = (_stricmp(v, "yes") == 0
+            || _stricmp(v, "true") == 0
+            || _stricmp(v, "1") == 0);
+    }
 }
 
 // ============================================================================
@@ -356,6 +373,59 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     // -----------------------------------------------------------------------
     ReadNullableInt(exINI, section, "RequiredElapsedTimeMin", ElapsedTimeMin);
     ReadNullableInt(exINI, section, "RequiredElapsedTimeMax", ElapsedTimeMax);
+    // -----------------------------------------------------------------------
+    // Debug — overlay CSF strings
+    // -----------------------------------------------------------------------
+    DebugMessageDisplay_Start .Read(exINI, section, "DebugMessageDisplay.Start");
+    DebugMessageDisplay_Cancel.Read(exINI, section, "DebugMessageDisplay.Cancel");
+    DebugMessageDisplay_Finish.Read(exINI, section, "DebugMessageDisplay.Finish");
+
+    // -----------------------------------------------------------------------
+    // Debug — raw log strings
+    // -----------------------------------------------------------------------
+    if (exINI.ReadString(section, "DebugLog.Start"))
+        DebugLog_Start = exINI.value();
+    if (exINI.ReadString(section, "DebugLog.Cancel"))
+        DebugLog_Cancel = exINI.value();
+    if (exINI.ReadString(section, "DebugLog.Finish"))
+        DebugLog_Finish = exINI.value();
+
+    // -----------------------------------------------------------------------
+    // Debug — per-condition auto-verbose flags
+    // -----------------------------------------------------------------------
+    ReadBoolFlag(exINI, section, "RequiredOwnerBuildings.DebugLog",     DebugLog_OwnerBuildings);
+    ReadBoolFlag(exINI, section, "RequiredOwnerUnits.DebugLog",         DebugLog_OwnerUnits);
+    ReadBoolFlag(exINI, section, "RequiredOwnerSuperWeapons.DebugLog",  DebugLog_OwnerSuperWeapons);
+    ReadBoolFlag(exINI, section, "RequiredOwnerCredits.DebugLog",       DebugLog_OwnerCredits);
+    ReadBoolFlag(exINI, section, "RequiredOwnerPower.DebugLog",         DebugLog_OwnerPower);
+    ReadBoolFlag(exINI, section, "RequiredOwnerPowerOutput.DebugLog",   DebugLog_OwnerPowerOutput);
+    ReadBoolFlag(exINI, section, "RequiredOwnerTechLevel.DebugLog",     DebugLog_OwnerTechLevel);
+
+    ReadBoolFlag(exINI, section, "RequiredEnemyBuildings.DebugLog",     DebugLog_EnemyBuildings);
+    ReadBoolFlag(exINI, section, "RequiredEnemyUnits.DebugLog",         DebugLog_EnemyUnits);
+    ReadBoolFlag(exINI, section, "RequiredEnemySuperWeapons.DebugLog",  DebugLog_EnemySuperWeapons);
+    ReadBoolFlag(exINI, section, "RequiredEnemyCredits.DebugLog",       DebugLog_EnemyCredits);
+    ReadBoolFlag(exINI, section, "RequiredEnemyPower.DebugLog",         DebugLog_EnemyPower);
+    ReadBoolFlag(exINI, section, "RequiredEnemyPowerOutput.DebugLog",   DebugLog_EnemyPowerOutput);
+    ReadBoolFlag(exINI, section, "RequiredEnemyTechLevel.DebugLog",     DebugLog_EnemyTechLevel);
+
+    ReadBoolFlag(exINI, section, "RequiredAlliesBuildings.DebugLog",    DebugLog_AlliesBuildings);
+    ReadBoolFlag(exINI, section, "RequiredAlliesUnits.DebugLog",        DebugLog_AlliesUnits);
+    ReadBoolFlag(exINI, section, "RequiredAlliesSuperWeapons.DebugLog", DebugLog_AlliesSuperWeapons);
+    ReadBoolFlag(exINI, section, "RequiredAlliesCredits.DebugLog",      DebugLog_AlliesCredits);
+    ReadBoolFlag(exINI, section, "RequiredAlliesPower.DebugLog",        DebugLog_AlliesPower);
+    ReadBoolFlag(exINI, section, "RequiredAlliesPowerOutput.DebugLog",  DebugLog_AlliesPowerOutput);
+    ReadBoolFlag(exINI, section, "RequiredAlliesTechLevel.DebugLog",    DebugLog_AlliesTechLevel);
+
+    ReadBoolFlag(exINI, section, "RequiredNeutralBuildings.DebugLog",   DebugLog_NeutralBuildings);
+    ReadBoolFlag(exINI, section, "RequiredNeutralUnits.DebugLog",       DebugLog_NeutralUnits);
+    ReadBoolFlag(exINI, section, "RequiredNeutralSuperWeapons.DebugLog",DebugLog_NeutralSuperWeapons);
+    ReadBoolFlag(exINI, section, "RequiredNeutralCredits.DebugLog",     DebugLog_NeutralCredits);
+    ReadBoolFlag(exINI, section, "RequiredNeutralPower.DebugLog",       DebugLog_NeutralPower);
+    ReadBoolFlag(exINI, section, "RequiredNeutralPowerOutput.DebugLog", DebugLog_NeutralPowerOutput);
+    ReadBoolFlag(exINI, section, "RequiredNeutralTechLevel.DebugLog",   DebugLog_NeutralTechLevel);
+
+    ReadBoolFlag(exINI, section, "RequiredElapsedTime.DebugLog",        DebugLog_ElapsedTime);
 }
 
 // ============================================================================
@@ -988,6 +1058,100 @@ bool AITriggerTypeExt::LoadGlobals(PhobosStreamReader& Stm)
 bool AITriggerTypeExt::SaveGlobals(PhobosStreamWriter& Stm)
 {
     return Stm.Success();
+}
+
+// ============================================================================
+// DEBUG DISPLAY MODE — read once, cache per game session
+//
+// Reads [Debug].DisplayAIWaveMessages from rulesmd.ini.
+// Returns Off / Overlay / Log / Both.
+// ============================================================================
+
+AITriggerTypeExt::DebugDisplayMode AITriggerTypeExt::GetDebugMode()
+{
+    static DebugDisplayMode cached = DebugDisplayMode::Off;
+    static bool             loaded = false;
+
+    if (loaded)
+        return cached;
+
+    if (!CCINIClass::INIRules)
+        return DebugDisplayMode::Off;
+
+    char buf[16] = {0};
+    CCINIClass::INIRules->ReadString(
+        "Debug", "DisplayAIWaveMessages", "no", buf, sizeof(buf));
+
+    if      (_stricmp(buf, "yes")     == 0) cached = DebugDisplayMode::Overlay;
+    else if (_stricmp(buf, "overlay") == 0) cached = DebugDisplayMode::Overlay;
+    else if (_stricmp(buf, "log")     == 0) cached = DebugDisplayMode::Log;
+    else if (_stricmp(buf, "both")    == 0) cached = DebugDisplayMode::Both;
+    else                                    cached = DebugDisplayMode::Off;
+
+    loaded = true;
+    return cached;
+}
+
+// ============================================================================
+// Lifecycle debug emitters
+// ============================================================================
+
+void AITriggerTypeExt::EmitDebugStart(
+    ExtData* pExt, AITriggerTypeClass* pThis)
+{
+    if (!pExt || !pThis) return;
+    auto const mode = GetDebugMode();
+    if (mode == DebugDisplayMode::Off) return;
+
+    // Overlay
+    if ((mode == DebugDisplayMode::Overlay || mode == DebugDisplayMode::Both)
+        && pExt->DebugMessageDisplay_Start.Text
+        && *pExt->DebugMessageDisplay_Start.Text)
+    {
+        MessageListClass::Instance.PrintMessage(
+            pExt->DebugMessageDisplay_Start.Text);
+    }
+
+    // Log
+    if ((mode == DebugDisplayMode::Log || mode == DebugDisplayMode::Both)
+        && !pExt->DebugLog_Start.empty())
+    {
+        Debug::Log("[AIExt Start] %s: %s\n",
+            pThis->ID, pExt->DebugLog_Start.c_str());
+    }
+}
+
+void AITriggerTypeExt::EmitDebugCancel(
+    ExtData* pExt, AITriggerTypeClass* pThis)
+{
+    if (!pExt || !pThis) return;
+    auto const mode = GetDebugMode();
+    if (mode == DebugDisplayMode::Off) return;
+
+    if ((mode == DebugDisplayMode::Overlay || mode == DebugDisplayMode::Both)
+        && pExt->DebugMessageDisplay_Cancel.Text
+        && *pExt->DebugMessageDisplay_Cancel.Text)
+    {
+        MessageListClass::Instance.PrintMessage(
+            pExt->DebugMessageDisplay_Cancel.Text);
+    }
+
+    if ((mode == DebugDisplayMode::Log || mode == DebugDisplayMode::Both)
+        && !pExt->DebugLog_Cancel.empty())
+    {
+        Debug::Log("[AIExt Cancel] %s: %s\n",
+            pThis->ID, pExt->DebugLog_Cancel.c_str());
+    }
+}
+
+void AITriggerTypeExt::EmitDebugFinish(
+    ExtData* pExt, AITriggerTypeClass* pThis)
+{
+    // Reserved for Phase 2 — needs a hook where team is actually spawned.
+    // Left as no-op for now so triggers can declare DebugMessageDisplay.Finish=
+    // in INI without errors, ready to activate once the hook lands.
+    (void)pExt;
+    (void)pThis;
 }
 
 // ============================================================================
