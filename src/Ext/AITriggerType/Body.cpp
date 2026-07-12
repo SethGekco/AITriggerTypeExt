@@ -197,6 +197,17 @@ static void ReadBoolFlag(
             || _stricmp(v, "1") == 0);
     }
 }
+// Read a CSF text label from INI into a CSFText, which performs CSF lookup
+// via its operator=(const char*).
+static void ReadCSFText(
+    INI_EX& exINI,
+    const char* pSection,
+    const char* pKey,
+    CSFText& out)
+{
+    if (exINI.ReadString(pSection, pKey))
+        out = exINI.value();
+}
 
 // ============================================================================
 // Initialize
@@ -376,9 +387,9 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     // -----------------------------------------------------------------------
     // Debug — overlay CSF strings
     // -----------------------------------------------------------------------
-    DebugMessageDisplay_Start .Read(exINI, section, "DebugMessageDisplay.Start");
-    DebugMessageDisplay_Cancel.Read(exINI, section, "DebugMessageDisplay.Cancel");
-    DebugMessageDisplay_Finish.Read(exINI, section, "DebugMessageDisplay.Finish");
+    ReadCSFText(exINI, section, "DebugMessageDisplay.Start",  DebugMessageDisplay_Start);
+    ReadCSFText(exINI, section, "DebugMessageDisplay.Cancel", DebugMessageDisplay_Cancel);
+    ReadCSFText(exINI, section, "DebugMessageDisplay.Finish", DebugMessageDisplay_Finish);
 
     // -----------------------------------------------------------------------
     // Debug — raw log strings
@@ -1075,11 +1086,11 @@ AITriggerTypeExt::DebugDisplayMode AITriggerTypeExt::GetDebugMode()
     if (loaded)
         return cached;
 
-    if (!CCINIClass::INIRules)
+if (!CCINIClass::INI_Rules)
         return DebugDisplayMode::Off;
 
     char buf[16] = {0};
-    CCINIClass::INIRules->ReadString(
+    CCINIClass::INI_Rules->ReadString(
         "Debug", "DisplayAIWaveMessages", "no", buf, sizeof(buf));
 
     if      (_stricmp(buf, "yes")     == 0) cached = DebugDisplayMode::Overlay;
