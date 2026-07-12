@@ -63,7 +63,7 @@
 #include <SuperClass.h>
 #include <HouseClass.h>
 #include <ScenarioClass.h>
-
+#include <string>
 #include <Utilities/Container.h>
 #include <Utilities/TemplateDef.h>
 
@@ -352,9 +352,9 @@ public:
         //   DebugMessageDisplay.Finish=STT:AI_RUSH_DEPLOYED
         // Shown when [Debug].DisplayAIWaveMessages is 'yes' or 'both'.
         // -----------------------------------------------------------------------
-        CSFText DebugMessageDisplay_Start;
-        CSFText DebugMessageDisplay_Cancel;
-        CSFText DebugMessageDisplay_Finish;
+        std::string DebugMessageDisplay_Start;
+        std::string DebugMessageDisplay_Cancel;
+        std::string DebugMessageDisplay_Finish;
 
         // -----------------------------------------------------------------------
         // DEBUG — log file (raw ASCII string; written to debug.log)

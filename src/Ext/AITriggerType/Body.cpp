@@ -11,6 +11,7 @@
 #include <Utilities/Macro.h>
 #include <Utilities/Debug.h>
 #include <MessageListClass.h>
+#include <StringTable.h>
 
 // ============================================================================
 // Static member definitions
@@ -197,13 +198,13 @@ static void ReadBoolFlag(
             || _stricmp(v, "1") == 0);
     }
 }
-// Read a CSF text label from INI into a CSFText, which performs CSF lookup
-// via its operator=(const char*).
-static void ReadCSFText(
+// Read a raw string label from INI into a std::string.
+// CSF lookup happens at display time (see EmitDebugStart / EmitDebugCancel).
+static void ReadRawString(
     INI_EX& exINI,
     const char* pSection,
     const char* pKey,
-    CSFText& out)
+    std::string& out)
 {
     if (exINI.ReadString(pSection, pKey))
         out = exINI.value();
@@ -387,9 +388,9 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     // -----------------------------------------------------------------------
     // Debug — overlay CSF strings
     // -----------------------------------------------------------------------
-    ReadCSFText(exINI, section, "DebugMessageDisplay.Start",  DebugMessageDisplay_Start);
-    ReadCSFText(exINI, section, "DebugMessageDisplay.Cancel", DebugMessageDisplay_Cancel);
-    ReadCSFText(exINI, section, "DebugMessageDisplay.Finish", DebugMessageDisplay_Finish);
+    ReadRawString(exINI, section, "DebugMessageDisplay.Start",  DebugMessageDisplay_Start);
+    ReadRawString(exINI, section, "DebugMessageDisplay.Cancel", DebugMessageDisplay_Cancel);
+    ReadRawString(exINI, section, "DebugMessageDisplay.Finish", DebugMessageDisplay_Finish);
 
     // -----------------------------------------------------------------------
     // Debug — raw log strings
@@ -1115,12 +1116,13 @@ void AITriggerTypeExt::EmitDebugStart(
     if (mode == DebugDisplayMode::Off) return;
 
     // Overlay
-    if ((mode == DebugDisplayMode::Overlay || mode == DebugDisplayMode::Both)
-        && pExt->DebugMessageDisplay_Start.Text
-        && *pExt->DebugMessageDisplay_Start.Text)
+if ((mode == DebugDisplayMode::Overlay || mode == DebugDisplayMode::Both)
+        && !pExt->DebugMessageDisplay_Start.empty())
     {
-        MessageListClass::Instance.PrintMessage(
-            pExt->DebugMessageDisplay_Start.Text);
+        const wchar_t* pMsg = StringTable::LoadString(
+            pExt->DebugMessageDisplay_Start.c_str());
+        if (pMsg && *pMsg)
+            MessageListClass::Instance.PrintMessage(pMsg);
     }
 
     // Log
@@ -1139,12 +1141,13 @@ void AITriggerTypeExt::EmitDebugCancel(
     auto const mode = GetDebugMode();
     if (mode == DebugDisplayMode::Off) return;
 
-    if ((mode == DebugDisplayMode::Overlay || mode == DebugDisplayMode::Both)
-        && pExt->DebugMessageDisplay_Cancel.Text
-        && *pExt->DebugMessageDisplay_Cancel.Text)
+if ((mode == DebugDisplayMode::Overlay || mode == DebugDisplayMode::Both)
+        && !pExt->DebugMessageDisplay_Cancel.empty())
     {
-        MessageListClass::Instance.PrintMessage(
-            pExt->DebugMessageDisplay_Cancel.Text);
+        const wchar_t* pMsg = StringTable::LoadString(
+            pExt->DebugMessageDisplay_Cancel.c_str());
+        if (pMsg && *pMsg)
+            MessageListClass::Instance.PrintMessage(pMsg);
     }
 
     if ((mode == DebugDisplayMode::Log || mode == DebugDisplayMode::Both)
