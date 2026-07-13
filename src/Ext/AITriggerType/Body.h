@@ -64,6 +64,7 @@
 #include <HouseClass.h>
 #include <ScenarioClass.h>
 #include <string>
+#include <vector>
 #include <Utilities/Container.h>
 #include <Utilities/TemplateDef.h>
 
