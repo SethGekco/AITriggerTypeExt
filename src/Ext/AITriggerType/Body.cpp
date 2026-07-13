@@ -1108,6 +1108,36 @@ if (!CCINIClass::INI_Rules)
 // Lifecycle debug emitters
 // ============================================================================
 
+// Convert ASCII string to wide string in a static buffer.
+// Returns nullptr if src is empty.
+static const wchar_t* ToWideStatic(const char* src)
+{
+    static wchar_t buf[256];
+    if (!src || !*src) return nullptr;
+    int i = 0;
+    while (src[i] && i < 255) {
+        buf[i] = static_cast<wchar_t>(static_cast<unsigned char>(src[i]));
+        i++;
+    }
+    buf[i] = 0;
+    return buf;
+}
+
+// Resolve a debug text string with NOSTR:/STT: prefix handling.
+// NOSTR: — literal text, no CSF lookup (safe for arbitrary ASCII)
+// STT:   — strip prefix and look up in string table
+// bare   — treat as a CSF key
+// Returns pointer valid until next ToWideStatic call.
+static const wchar_t* ResolveDebugText(const std::string& src)
+{
+    if (src.empty()) return nullptr;
+    if (src.length() > 6 && src.compare(0, 6, "NOSTR:") == 0)
+        return ToWideStatic(src.c_str() + 6);
+    if (src.length() > 4 && src.compare(0, 4, "STT:") == 0)
+        return StringTable::LoadString(src.c_str() + 4);
+    return StringTable::LoadString(src.c_str());
+}
+
 void AITriggerTypeExt::EmitDebugStart(
     ExtData* pExt, AITriggerTypeClass* pThis)
 {
@@ -1119,8 +1149,7 @@ void AITriggerTypeExt::EmitDebugStart(
 if ((mode == DebugDisplayMode::Overlay || mode == DebugDisplayMode::Both)
         && !pExt->DebugMessageDisplay_Start.empty())
     {
-        const wchar_t* pMsg = StringTable::LoadString(
-            pExt->DebugMessageDisplay_Start.c_str());
+    const wchar_t* pMsg = ResolveDebugText(pExt->DebugMessageDisplay_Start);
         if (pMsg && *pMsg)
             MessageListClass::Instance.PrintMessage(pMsg);
     }
@@ -1144,8 +1173,7 @@ void AITriggerTypeExt::EmitDebugCancel(
 if ((mode == DebugDisplayMode::Overlay || mode == DebugDisplayMode::Both)
         && !pExt->DebugMessageDisplay_Cancel.empty())
     {
-        const wchar_t* pMsg = StringTable::LoadString(
-            pExt->DebugMessageDisplay_Cancel.c_str());
+    const wchar_t* pMsg = ResolveDebugText(pExt->DebugMessageDisplay_Start);
         if (pMsg && *pMsg)
             MessageListClass::Instance.PrintMessage(pMsg);
     }
