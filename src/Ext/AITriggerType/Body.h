@@ -192,7 +192,40 @@ public:
 
     // No ExtPointerOffset — AITriggerTypeClass has no spare pointer field.
     // Container<AITriggerTypeExt> will use the unordered_map path automatically.
+// ============================================================================
+// Debug detail collection (Priority 1 debug system)
+// Filled by Check* functions when the caller wants per-index status detail.
+// ============================================================================
+struct AIExtCheckDetail
+{
+    // Filled by the Check function per parallel-list index. Each string
+    // is one line of prose like "GABARR needs [1, -1], has 3 PASS".
+    std::vector<std::string> passing;
+    std::vector<std::string> failing;
 
+    // Optional: gate name (populated by the caller before invoking Check).
+    // Used by the debug emitters to prefix output lines.
+    std::string gate_name;
+};
+
+// Parsed form of Debug.Detail=passing,failing settings.
+struct AIExtDetailMode
+{
+    bool show_passing = false;
+    bool show_failing = false;
+
+    bool anything() const { return show_passing || show_failing; }
+};
+
+// Parsed form of Debug.DetailTrigger=start,cancel,finish.
+struct AIExtLifecycleMask
+{
+    bool on_start  = false;
+    bool on_cancel = false;
+    bool on_finish = false;
+
+    bool anything() const { return on_start || on_cancel || on_finish; }
+};
     // =========================================================================
     // ExtData
     // =========================================================================
@@ -406,7 +439,28 @@ public:
         bool DebugLog_NeutralTechLevel    = false;
 
         bool DebugLog_ElapsedTime         = false;
-
+// Priority 1 debug — per-gate detail control
+        AIExtDetailMode      Debug_Owner_Buildings_Detail;
+        AIExtLifecycleMask   Debug_Owner_Buildings_DetailTrigger { false, false, true /*finish*/ };
+        AIExtDetailMode      Debug_Enemy_Buildings_Detail;
+        AIExtLifecycleMask   Debug_Enemy_Buildings_DetailTrigger { false, false, true };
+        AIExtDetailMode      Debug_Enemy_Units_Detail;
+        AIExtLifecycleMask   Debug_Enemy_Units_DetailTrigger { false, false, true };
+        AIExtDetailMode      Debug_Neutral_Buildings_Detail;
+        AIExtLifecycleMask   Debug_Neutral_Buildings_DetailTrigger { false, false, true };
+        // Note: scalars (credits, power, elapsed time) get detail from the
+        // check function too but they only have one entry so passing/failing
+        // is boolean per-gate rather than per-index.
+        AIExtDetailMode      Debug_Owner_Credits_Detail;
+        AIExtLifecycleMask   Debug_Owner_Credits_DetailTrigger { false, false, true };
+        AIExtDetailMode      Debug_Enemy_Credits_Detail;
+        AIExtLifecycleMask   Debug_Enemy_Credits_DetailTrigger { false, false, true };
+        AIExtDetailMode      Debug_Owner_Power_Detail;
+        AIExtLifecycleMask   Debug_Owner_Power_DetailTrigger { false, false, true };
+        AIExtDetailMode      Debug_Enemy_Power_Detail;
+        AIExtLifecycleMask   Debug_Enemy_Power_DetailTrigger { false, false, true };
+        AIExtDetailMode      Debug_ElapsedTime_Detail;
+        AIExtLifecycleMask   Debug_ElapsedTime_DetailTrigger { false, false, true };
         // -----------------------------------------------------------------------
         // Constructor
         // -----------------------------------------------------------------------
