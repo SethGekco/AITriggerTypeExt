@@ -198,82 +198,6 @@ static void ReadBoolFlag(
             || _stricmp(v, "1") == 0);
     }
 }
-// Parse "passing,failing" / "passing" / "failing" / "none" / "never" / "" into a mode struct.
-static void ReadDetailMode(
-    INI_EX& exINI,
-    const char* pSection,
-    const char* pKey,
-    AIExtDetailMode& out)
-{
-    if (!exINI.ReadString(pSection, pKey))
-        return;
-
-    // Reset to defaults before parsing (so INI value overrides fully).
-    out.show_passing = false;
-    out.show_failing = false;
-
-    const char* v = exINI.value();
-    if (!v || !*v) return;
-
-    // Simple tokenizer — split on comma
-    char buf[128];
-    strncpy_s(buf, sizeof(buf), v, _TRUNCATE);
-    char* ctx = nullptr;
-    for (char* tok = strtok_s(buf, ",", &ctx); tok; tok = strtok_s(nullptr, ",", &ctx))
-    {
-        // Trim leading whitespace
-        while (*tok == ' ' || *tok == '\t') tok++;
-        // Trim trailing whitespace
-        char* end = tok + strlen(tok);
-        while (end > tok && (end[-1] == ' ' || end[-1] == '\t')) *(--end) = 0;
-
-        if (_stricmp(tok, "passing") == 0) out.show_passing = true;
-        else if (_stricmp(tok, "failing") == 0) out.show_failing = true;
-        else if (_stricmp(tok, "none") == 0 || _stricmp(tok, "never") == 0) {
-            out.show_passing = false;
-            out.show_failing = false;
-            return;  // short-circuit: never/none overrides everything else
-        }
-    }
-}
-
-// Parse "start,cancel,finish" / subsets into a lifecycle mask struct.
-static void ReadLifecycleMask(
-    INI_EX& exINI,
-    const char* pSection,
-    const char* pKey,
-    AIExtLifecycleMask& out)
-{
-    if (!exINI.ReadString(pSection, pKey))
-        return;
-
-    out.on_start = false;
-    out.on_cancel = false;
-    out.on_finish = false;
-
-    const char* v = exINI.value();
-    if (!v || !*v) return;
-
-    char buf[128];
-    strncpy_s(buf, sizeof(buf), v, _TRUNCATE);
-    char* ctx = nullptr;
-    for (char* tok = strtok_s(buf, ",", &ctx); tok; tok = strtok_s(nullptr, ",", &ctx))
-    {
-        while (*tok == ' ' || *tok == '\t') tok++;
-        char* end = tok + strlen(tok);
-        while (end > tok && (end[-1] == ' ' || end[-1] == '\t')) *(--end) = 0;
-
-        if (_stricmp(tok, "start") == 0) out.on_start = true;
-        else if (_stricmp(tok, "cancel") == 0) out.on_cancel = true;
-        else if (_stricmp(tok, "finish") == 0) out.on_finish = true;
-        else if (_stricmp(tok, "never") == 0 || _stricmp(tok, "none") == 0) {
-            out.on_start = false;
-            out.on_cancel = false;
-            out.on_finish = false;
-            return;
-        }
-    }
-}
 // Read a raw string label from INI into a std::string.
 // CSF lookup happens at display time (see EmitDebugStart / EmitDebugCancel).
 static void ReadRawString(
@@ -514,28 +438,7 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     ReadBoolFlag(exINI, section, "RequiredNeutralTechLevel.DebugLog",   DebugLog_NeutralTechLevel);
 
     ReadBoolFlag(exINI, section, "RequiredElapsedTime.DebugLog",        DebugLog_ElapsedTime);
-
-    // Priority 1 debug — Detail sub-fields
-    ReadDetailMode    (exINI, section, "RequiredOwnerBuildings.Debug.Detail",         Debug_Owner_Buildings_Detail);
-    ReadLifecycleMask (exINI, section, "RequiredOwnerBuildings.Debug.DetailTrigger",  Debug_Owner_Buildings_DetailTrigger);
-    ReadDetailMode    (exINI, section, "RequiredEnemyBuildings.Debug.Detail",         Debug_Enemy_Buildings_Detail);
-    ReadLifecycleMask (exINI, section, "RequiredEnemyBuildings.Debug.DetailTrigger",  Debug_Enemy_Buildings_DetailTrigger);
-    ReadDetailMode    (exINI, section, "RequiredEnemyUnits.Debug.Detail",             Debug_Enemy_Units_Detail);
-    ReadLifecycleMask (exINI, section, "RequiredEnemyUnits.Debug.DetailTrigger",      Debug_Enemy_Units_DetailTrigger);
-    ReadDetailMode    (exINI, section, "RequiredNeutralBuildings.Debug.Detail",       Debug_Neutral_Buildings_Detail);
-    ReadLifecycleMask (exINI, section, "RequiredNeutralBuildings.Debug.DetailTrigger",Debug_Neutral_Buildings_DetailTrigger);
-    ReadDetailMode    (exINI, section, "RequiredOwnerCreditsMin.Debug.Detail",        Debug_Owner_Credits_Detail);
-    ReadLifecycleMask (exINI, section, "RequiredOwnerCreditsMin.Debug.DetailTrigger", Debug_Owner_Credits_DetailTrigger);
-    ReadDetailMode    (exINI, section, "RequiredEnemyCreditsMax.Debug.Detail",        Debug_Enemy_Credits_Detail);
-    ReadLifecycleMask (exINI, section, "RequiredEnemyCreditsMax.Debug.DetailTrigger", Debug_Enemy_Credits_DetailTrigger);
-    ReadDetailMode    (exINI, section, "RequiredOwnerPowerMin.Debug.Detail",          Debug_Owner_Power_Detail);
-    ReadLifecycleMask (exINI, section, "RequiredOwnerPowerMin.Debug.DetailTrigger",   Debug_Owner_Power_DetailTrigger);
-    ReadDetailMode    (exINI, section, "RequiredEnemyPowerMax.Debug.Detail",          Debug_Enemy_Power_Detail);
-    ReadLifecycleMask (exINI, section, "RequiredEnemyPowerMax.Debug.DetailTrigger",   Debug_Enemy_Power_DetailTrigger);
-    ReadDetailMode    (exINI, section, "RequiredElapsedTimeMin.Debug.Detail",         Debug_ElapsedTime_Detail);
-    ReadLifecycleMask (exINI, section, "RequiredElapsedTimeMin.Debug.DetailTrigger",  Debug_ElapsedTime_DetailTrigger);
 }
-
 
 // ============================================================================
 // InvalidatePointer
