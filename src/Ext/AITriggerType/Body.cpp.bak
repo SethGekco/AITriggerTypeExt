@@ -199,7 +199,7 @@ static void ReadBoolFlag(
     }
 }
 // Read a raw string label from INI into a std::string.
-// CSF lookup happens at display time (see EmitDebugConsider / EmitDebugCancel).
+// CSF lookup happens at display time (see EmitDebugStart / EmitDebugCancel).
 static void ReadRawString(
     INI_EX& exINI,
     const char* pSection,
@@ -388,15 +388,15 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     // -----------------------------------------------------------------------
     // Debug — overlay CSF strings
     // -----------------------------------------------------------------------
-    ReadRawString(exINI, section, "DebugMessageDisplay.Consider",  DebugMessageDisplay_Consider);
+    ReadRawString(exINI, section, "DebugMessageDisplay.Start",  DebugMessageDisplay_Start);
     ReadRawString(exINI, section, "DebugMessageDisplay.Cancel", DebugMessageDisplay_Cancel);
     ReadRawString(exINI, section, "DebugMessageDisplay.Finish", DebugMessageDisplay_Finish);
 
     // -----------------------------------------------------------------------
     // Debug — raw log strings
     // -----------------------------------------------------------------------
-    if (exINI.ReadString(section, "DebugLog.Consider"))
-        DebugLog_Consider = exINI.value();
+    if (exINI.ReadString(section, "DebugLog.Start"))
+        DebugLog_Start = exINI.value();
     if (exINI.ReadString(section, "DebugLog.Cancel"))
         DebugLog_Cancel = exINI.value();
     if (exINI.ReadString(section, "DebugLog.Finish"))
@@ -1138,7 +1138,7 @@ static const wchar_t* ResolveDebugText(const std::string& src)
     return StringTable::LoadString(src.c_str());
 }
 
-void AITriggerTypeExt::EmitDebugConsider(
+void AITriggerTypeExt::EmitDebugStart(
     ExtData* pExt, AITriggerTypeClass* pThis)
 {
     if (!pExt || !pThis) return;
@@ -1147,19 +1147,19 @@ void AITriggerTypeExt::EmitDebugConsider(
 
     // Overlay
 if ((mode == DebugDisplayMode::Overlay || mode == DebugDisplayMode::Both)
-        && !pExt->DebugMessageDisplay_Consider.empty())
+        && !pExt->DebugMessageDisplay_Start.empty())
     {
-    const wchar_t* pMsg = ResolveDebugText(pExt->DebugMessageDisplay_Consider);
+    const wchar_t* pMsg = ResolveDebugText(pExt->DebugMessageDisplay_Start);
         if (pMsg && *pMsg)
             MessageListClass::Instance.PrintMessage(pMsg);
     }
 
     // Log
     if ((mode == DebugDisplayMode::Log || mode == DebugDisplayMode::Both)
-        && !pExt->DebugLog_Consider.empty())
+        && !pExt->DebugLog_Start.empty())
     {
-        Debug::Log("[AIExt Consider] %s: %s\n",
-            pThis->ID, pExt->DebugLog_Consider.c_str());
+        Debug::Log("[AIExt Start] %s: %s\n",
+            pThis->ID, pExt->DebugLog_Start.c_str());
     }
 }
 

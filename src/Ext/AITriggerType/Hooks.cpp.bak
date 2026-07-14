@@ -196,7 +196,7 @@ DEFINE_HOOK(0x41EAC0, AITriggerTypeClass_ConditionMet_Gate, 0x5)
         return ReturnFalse;
     }
 
-    AITriggerTypeExt::EmitDebugConsider(pExt, pThis);
+    AITriggerTypeExt::EmitDebugStart(pExt, pThis);
     return 0;
 }
 

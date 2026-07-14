@@ -352,7 +352,7 @@ public:
         //   DebugMessageDisplay.Finish=STT:AI_RUSH_DEPLOYED
         // Shown when [Debug].DisplayAIWaveMessages is 'yes' or 'both'.
         // -----------------------------------------------------------------------
-        std::string DebugMessageDisplay_Consider;
+        std::string DebugMessageDisplay_Start;
         std::string DebugMessageDisplay_Cancel;
         std::string DebugMessageDisplay_Finish;
 
@@ -363,7 +363,7 @@ public:
         //   DebugLog.Finish=TT_TANK_RUSH deployed team
         // Written when [Debug].DisplayAIWaveMessages is 'log' or 'both'.
         // -----------------------------------------------------------------------
-        std::string DebugLog_Consider;
+        std::string DebugLog_Start;
         std::string DebugLog_Cancel;
         std::string DebugLog_Finish;
 
@@ -460,10 +460,10 @@ public:
             , NeutralTechLevelMax {}
             , ElapsedTimeMin  {}
             , ElapsedTimeMax  {}
-            , DebugMessageDisplay_Consider  {}
+            , DebugMessageDisplay_Start  {}
             , DebugMessageDisplay_Cancel {}
             , DebugMessageDisplay_Finish {}
-            , DebugLog_Consider  {}
+            , DebugLog_Start  {}
             , DebugLog_Cancel {}
             , DebugLog_Finish {}
         { }
@@ -580,7 +580,7 @@ public:
     static DebugDisplayMode GetDebugMode();
 
     // Lifecycle debug emitters — called from Hooks.cpp gate hook
-    static void EmitDebugConsider (ExtData* pExt, AITriggerTypeClass* pThis);
+    static void EmitDebugStart (ExtData* pExt, AITriggerTypeClass* pThis);
     static void EmitDebugCancel(ExtData* pExt, AITriggerTypeClass* pThis);
     static void EmitDebugFinish(ExtData* pExt, AITriggerTypeClass* pThis);
 };
