@@ -1173,7 +1173,7 @@ void AITriggerTypeExt::EmitDebugCancel(
 if ((mode == DebugDisplayMode::Overlay || mode == DebugDisplayMode::Both)
         && !pExt->DebugMessageDisplay_Cancel.empty())
     {
-    const wchar_t* pMsg = ResolveDebugText(pExt->DebugMessageDisplay_Start);
+    const wchar_t* pMsg = ResolveDebugText(pExt->DebugMessageDisplay_Cancel);
         if (pMsg && *pMsg)
             MessageListClass::Instance.PrintMessage(pMsg);
     }
