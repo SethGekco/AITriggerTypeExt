@@ -193,6 +193,7 @@ public:
 
     // No ExtPointerOffset — AITriggerTypeClass has no spare pointer field.
     // Container<AITriggerTypeExt> will use the unordered_map path automatically.
+};
 // ============================================================================
 // Debug detail collection (Priority 1 debug system)
 // Filled by Check* functions when the caller wants per-index status detail.
