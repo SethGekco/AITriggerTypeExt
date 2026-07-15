@@ -20,3 +20,4 @@ ipch/
 
 # Keep the DLL out of source control (built by CI)
 *.dll
+*.bak
