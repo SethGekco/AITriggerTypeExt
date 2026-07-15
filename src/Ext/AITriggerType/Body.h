@@ -64,6 +64,7 @@
 #include <HouseClass.h>
 #include <ScenarioClass.h>
 #include <string>
+#include <vector>
 #include <Utilities/Container.h>
 #include <Utilities/TemplateDef.h>
 
@@ -177,6 +178,37 @@ struct SWReadyGate
 // ============================================================================
 // AITriggerTypeExt
 // ============================================================================
+
+// ============================================================================
+// Debug detail collection (Priority 1 debug system)
+// Filled by Check* functions when the caller wants per-index status detail.
+// ============================================================================
+struct AIExtCheckDetail
+{
+    // Filled by the Check function per parallel-list index. Each string
+    // is one line of prose like "GABARR needs [1, -1], has 3 PASS".
+    std::vector<std::string> passing;
+    std::vector<std::string> failing;
+    std::string gate_name;
+};
+
+// Parsed form of Debug.Detail=passing,failing settings.
+struct AIExtDetailMode
+{
+    bool show_passing = false;
+    bool show_failing = false;
+    bool anything() const { return show_passing || show_failing; }
+};
+
+// Parsed form of Debug.DetailTrigger=start,cancel,finish.
+struct AIExtLifecycleMask
+{
+    bool on_start  = false;
+    bool on_cancel = false;
+    bool on_finish = false;
+    bool anything() const { return on_start || on_cancel || on_finish; }
+};
+
 class AITriggerTypeExt
 {
 public:
@@ -355,6 +387,26 @@ public:
         std::string DebugMessageDisplay_Consider;
         std::string DebugMessageDisplay_Cancel;
         std::string DebugMessageDisplay_Finish;
+
+        // Priority 1 debug — per-gate detail control (Detail= and DetailTrigger= sub-fields)
+        AIExtDetailMode      Debug_Owner_Buildings_Detail;
+        AIExtLifecycleMask   Debug_Owner_Buildings_DetailTrigger { false, false, true };
+        AIExtDetailMode      Debug_Enemy_Buildings_Detail;
+        AIExtLifecycleMask   Debug_Enemy_Buildings_DetailTrigger { false, false, true };
+        AIExtDetailMode      Debug_Enemy_Units_Detail;
+        AIExtLifecycleMask   Debug_Enemy_Units_DetailTrigger { false, false, true };
+        AIExtDetailMode      Debug_Neutral_Buildings_Detail;
+        AIExtLifecycleMask   Debug_Neutral_Buildings_DetailTrigger { false, false, true };
+        AIExtDetailMode      Debug_Owner_Credits_Detail;
+        AIExtLifecycleMask   Debug_Owner_Credits_DetailTrigger { false, false, true };
+        AIExtDetailMode      Debug_Enemy_Credits_Detail;
+        AIExtLifecycleMask   Debug_Enemy_Credits_DetailTrigger { false, false, true };
+        AIExtDetailMode      Debug_Owner_Power_Detail;
+        AIExtLifecycleMask   Debug_Owner_Power_DetailTrigger { false, false, true };
+        AIExtDetailMode      Debug_Enemy_Power_Detail;
+        AIExtLifecycleMask   Debug_Enemy_Power_DetailTrigger { false, false, true };
+        AIExtDetailMode      Debug_ElapsedTime_Detail;
+        AIExtLifecycleMask   Debug_ElapsedTime_DetailTrigger { false, false, true };
 
         // -----------------------------------------------------------------------
         // DEBUG — log file (raw ASCII string; written to debug.log)
