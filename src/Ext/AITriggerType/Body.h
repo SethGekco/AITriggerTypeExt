@@ -408,6 +408,33 @@ public:
         AIExtDetailMode      Debug_ElapsedTime_Detail;
         AIExtLifecycleMask   Debug_ElapsedTime_DetailTrigger { false, false, true };
 
+        // Priority 1b — mutable check report populated by EvaluateAndReport()
+        // Reset at the start of each evaluation; consumed by EmitDebug* functions.
+        mutable AIExtCheckDetail LastCheckReport;
+
+        // Priority 1b — detail-building shadow methods (walk all indices, no short-circuit)
+        // Populate `out` with one prose line per gate entry, categorized pass/fail.
+        void BuildBuildingsDetail(
+            HouseClass* pHouse,
+            const TypeCountGate<BuildingTypeClass>& gate,
+            const char* gate_name,
+            AIExtCheckDetail& out) const;
+        void BuildUnitsDetail(
+            HouseClass* pHouse,
+            const TypeCountGate<TechnoTypeClass>& gate,
+            const char* gate_name,
+            AIExtCheckDetail& out) const;
+        void BuildScalarDetail(
+            const char* gate_name,
+            int actual,
+            const Nullable<int>& min,
+            const Nullable<int>& max,
+            AIExtCheckDetail& out) const;
+
+        // Priority 1b — orchestrator: walks all set gates, populates LastCheckReport
+        void EvaluateAndReport(HouseClass* pOwner, HouseClass* pEnemy) const;
+
+
         // -----------------------------------------------------------------------
         // DEBUG — log file (raw ASCII string; written to debug.log)
         //   DebugLog.Start=TT_TANK_RUSH started building

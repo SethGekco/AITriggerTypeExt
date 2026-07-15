@@ -1348,3 +1348,139 @@ DEFINE_HOOK(0x41F39F, AITriggerTypeClass_LoadFromINI_PerItem, 0xA)
     AITriggerTypeExt::ExtMap.LoadFromINI(pItem, pINI);
     return 0;
 }
+
+
+// ============================================================================
+// Priority 1b — detail-building shadow methods
+// Walk all indices without short-circuit. Called by EmitDebug* functions
+// when the modder has enabled Debug.Detail on any gate.
+// Format per entry:
+//   List gates:   "{GateName} {TypeID}({actual}):{min},{max}"
+//   Scalar gates: "{GateName}({actual}):{min},{max}"
+// Entries are categorized into out.passing or out.failing.
+// ============================================================================
+
+void AITriggerTypeExt::ExtData::BuildBuildingsDetail(
+    HouseClass* pHouse,
+    const TypeCountGate<BuildingTypeClass>& gate,
+    const char* gate_name,
+    AIExtCheckDetail& out) const
+{
+    if (!pHouse) return;
+    for (size_t i = 0; i < gate.Types.size(); ++i)
+    {
+        if (!gate.Types[i]) continue;
+        int count = pHouse->CountOwnedAndPresent(gate.Types[i]);
+        int min_v = gate.GetMin(i);
+        int max_v = gate.GetMax(i);
+        bool ok = gate.CheckCount(i, count);
+
+        char line[128];
+        snprintf(line, sizeof(line), "%s %s(%d):%d,%d",
+                 gate_name, gate.Types[i]->ID, count, min_v, max_v);
+        (ok ? out.passing : out.failing).push_back(line);
+    }
+}
+
+void AITriggerTypeExt::ExtData::BuildUnitsDetail(
+    HouseClass* pHouse,
+    const TypeCountGate<TechnoTypeClass>& gate,
+    const char* gate_name,
+    AIExtCheckDetail& out) const
+{
+    if (!pHouse) return;
+    for (size_t i = 0; i < gate.Types.size(); ++i)
+    {
+        if (!gate.Types[i]) continue;
+        int count = CountOwnedTechnoType(pHouse, gate.Types[i]);
+        int min_v = gate.GetMin(i);
+        int max_v = gate.GetMax(i);
+        bool ok = gate.CheckCount(i, count);
+
+        char line[128];
+        snprintf(line, sizeof(line), "%s %s(%d):%d,%d",
+                 gate_name, gate.Types[i]->ID, count, min_v, max_v);
+        (ok ? out.passing : out.failing).push_back(line);
+    }
+}
+
+void AITriggerTypeExt::ExtData::BuildScalarDetail(
+    const char* gate_name,
+    int actual,
+    const Nullable<int>& min,
+    const Nullable<int>& max,
+    AIExtCheckDetail& out) const
+{
+    // Mirror the vanilla check logic: min fails if actual < min,
+    // max fails if actual > max (and max != -1 which means uncapped).
+    bool ok = true;
+    if (min.isset() && actual < min.Get()) ok = false;
+    if (max.isset() && max.Get() != -1 && actual > max.Get()) ok = false;
+
+    int min_display = min.isset() ? min.Get() : 0;
+    int max_display = max.isset() ? max.Get() : -1;
+
+    char line[128];
+    snprintf(line, sizeof(line), "%s(%d):%d,%d",
+             gate_name, actual, min_display, max_display);
+    (ok ? out.passing : out.failing).push_back(line);
+}
+
+void AITriggerTypeExt::ExtData::EvaluateAndReport(HouseClass* pOwner, HouseClass* pEnemy) const
+{
+    LastCheckReport.passing.clear();
+    LastCheckReport.failing.clear();
+
+    if (!pOwner) return;
+
+    // ─── Owner scope ────────────────────────────────────────────────────
+    if (!OwnerBuildings.empty())
+        BuildBuildingsDetail(pOwner, OwnerBuildings,
+            "RequiredOwnerBuildings", LastCheckReport);
+    if (!OwnerUnits.empty())
+        BuildUnitsDetail(pOwner, OwnerUnits,
+            "RequiredOwnerUnits", LastCheckReport);
+    if (OwnerCreditsMin.isset() || OwnerCreditsMax.isset())
+        BuildScalarDetail("RequiredOwnerCredits", pOwner->Balance,
+            OwnerCreditsMin, OwnerCreditsMax, LastCheckReport);
+    if (OwnerPowerMin.isset() || OwnerPowerMax.isset())
+    {
+        int net = pOwner->PowerOutput - pOwner->PowerDrain;
+        BuildScalarDetail("RequiredOwnerPower", net,
+            OwnerPowerMin, OwnerPowerMax, LastCheckReport);
+    }
+
+    // ─── Enemy scope ────────────────────────────────────────────────────
+    if (pEnemy)
+    {
+        if (!EnemyBuildings.empty())
+            BuildBuildingsDetail(pEnemy, EnemyBuildings,
+                "RequiredEnemyBuildings", LastCheckReport);
+        if (!EnemyUnits.empty())
+            BuildUnitsDetail(pEnemy, EnemyUnits,
+                "RequiredEnemyUnits", LastCheckReport);
+        if (EnemyCreditsMin.isset() || EnemyCreditsMax.isset())
+            BuildScalarDetail("RequiredEnemyCredits", pEnemy->Balance,
+                EnemyCreditsMin, EnemyCreditsMax, LastCheckReport);
+        if (EnemyPowerMin.isset() || EnemyPowerMax.isset())
+        {
+            int net = pEnemy->PowerOutput - pEnemy->PowerDrain;
+            BuildScalarDetail("RequiredEnemyPower", net,
+                EnemyPowerMin, EnemyPowerMax, LastCheckReport);
+        }
+    }
+
+    // ─── ElapsedTime (game-scope, no house needed) ──────────────────────
+    if (ElapsedTimeMin.isset() || ElapsedTimeMax.isset())
+    {
+        int elapsed = Unsorted::CurrentFrame;
+        BuildScalarDetail("RequiredElapsedTime", elapsed,
+            ElapsedTimeMin, ElapsedTimeMax, LastCheckReport);
+    }
+
+    // ─── Deferred to follow-up ships ────────────────────────────────────
+    // SuperWeapons: SWReadyGate has different API (ReadyMin/Max + frame math)
+    // PowerOutput / TechLevel: verify field names first
+    // Allies: multi-house walk (see CheckAllies for pattern)
+    // Neutral: global neutral house lookup
+}
