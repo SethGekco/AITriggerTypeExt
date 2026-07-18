@@ -447,6 +447,9 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     ReadRawString(exINI, section, "DebugMessageDisplay.Consider",  DebugMessageDisplay_Consider);
     ReadRawString(exINI, section, "DebugMessageDisplay.Cancel", DebugMessageDisplay_Cancel);
     ReadRawString(exINI, section, "DebugMessageDisplay.Finish", DebugMessageDisplay_Finish);
+    ReadRawString(exINI, section, "DebugMessageDisplay.Start", DebugMessageDisplay_Start);
+    ReadRawString(exINI, section, "DebugMessageDisplay.Destroyed", DebugMessageDisplay_Destroyed);
+    ReadRawString(exINI, section, "DebugMessageDisplay.Deleted", DebugMessageDisplay_Deleted);
 
     // Priority 1 debug — Detail sub-fields (scaffolding only, behavior in follow-up)
     ReadDetailMode    (exINI, section, "RequiredOwnerBuildings.Debug.Detail",          Debug_Owner_Buildings_Detail);
@@ -477,6 +480,12 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
         DebugLog_Cancel = exINI.value();
     if (exINI.ReadString(section, "DebugLog.Finish"))
         DebugLog_Finish = exINI.value();
+    if (exINI.ReadString(section, "DebugLog.Start"))
+        DebugLog_Start = exINI.value();
+    if (exINI.ReadString(section, "DebugLog.Destroyed"))
+        DebugLog_Destroyed = exINI.value();
+    if (exINI.ReadString(section, "DebugLog.Deleted"))
+        DebugLog_Deleted = exINI.value();
 
     // -----------------------------------------------------------------------
     // Debug — per-condition auto-verbose flags
@@ -1265,11 +1274,63 @@ if ((mode == DebugDisplayMode::Overlay || mode == DebugDisplayMode::Both)
 void AITriggerTypeExt::EmitDebugFinish(
     ExtData* pExt, AITriggerTypeClass* pThis)
 {
-    // Reserved for Phase 2 — needs a hook where team is actually spawned.
+    // Reserved for Phase 2 — needs a hook where the team's script begins.
     // Left as no-op for now so triggers can declare DebugMessageDisplay.Finish=
     // in INI without errors, ready to activate once the hook lands.
     (void)pExt;
     (void)pThis;
+}
+
+// Shared body for the confirmed-hook lifecycle events. `label` is the bracket
+// tag used in the log line ("Start"/"Destroyed"/"Deleted").
+static void EmitLifecycle(
+    const char* label,
+    AITriggerTypeClass* pThis,
+    const std::string& overlay,
+    const std::string& logText)
+{
+    auto const mode = AITriggerTypeExt::GetDebugMode();
+    if (mode == AITriggerTypeExt::DebugDisplayMode::Off) return;
+
+    if ((mode == AITriggerTypeExt::DebugDisplayMode::Overlay
+            || mode == AITriggerTypeExt::DebugDisplayMode::Both)
+        && !overlay.empty())
+    {
+        const wchar_t* pMsg = ResolveDebugText(overlay);
+        if (pMsg && *pMsg)
+            MessageListClass::Instance.PrintMessage(pMsg);
+    }
+
+    if ((mode == AITriggerTypeExt::DebugDisplayMode::Log
+            || mode == AITriggerTypeExt::DebugDisplayMode::Both)
+        && !logText.empty())
+    {
+        Debug::Log("[AIExt %s] %s: %s\n", label, pThis->ID, logText.c_str());
+    }
+}
+
+void AITriggerTypeExt::EmitDebugStart(
+    ExtData* pExt, AITriggerTypeClass* pThis)
+{
+    if (!pExt || !pThis) return;
+    EmitLifecycle("Start", pThis,
+        pExt->DebugMessageDisplay_Start, pExt->DebugLog_Start);
+}
+
+void AITriggerTypeExt::EmitDebugDestroyed(
+    ExtData* pExt, AITriggerTypeClass* pThis)
+{
+    if (!pExt || !pThis) return;
+    EmitLifecycle("Destroyed", pThis,
+        pExt->DebugMessageDisplay_Destroyed, pExt->DebugLog_Destroyed);
+}
+
+void AITriggerTypeExt::EmitDebugDeleted(
+    ExtData* pExt, AITriggerTypeClass* pThis)
+{
+    if (!pExt || !pThis) return;
+    EmitLifecycle("Deleted", pThis,
+        pExt->DebugMessageDisplay_Deleted, pExt->DebugLog_Deleted);
 }
 
 // ============================================================================

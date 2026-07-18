@@ -225,3 +225,88 @@ DEFINE_HOOK(0x41E720, AITriggerTypeClass_ConditionMet_Diag, 0x6)
 
     return 0;
 }
+
+// ============================================================================
+// LIFECYCLE HOOKS — Start / Destroyed / Deleted
+// Addresses verified by objdump disassembly of vanilla gamemd.exe (2026-07-17).
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// START — 0x6F0D26, size 6  ✅ CONFIRMED (register verified)
+//
+// Inside HouseClass::FindEligibleAITeams (FUN_006F0AB0). At 0x6F0D1B the
+// weighted-random winner is picked (MOV EDI,[EBX+ECX*8]); the following
+// TEST/JE at 0x6F0D1E/0x6F0D20 guarantees EDI != null by 0x6F0D26. Here the
+// engine reads the winner's Team1 (MOV ESI,[EDI+0xDC]) to dispatch it.
+//   EDI = winning AITriggerTypeClass*
+// This is the earliest point the winning trigger is known — the downstream
+// CreateTeam loop (~0x4F8AB2) no longer has the trigger, only its TeamTypes.
+// Fires once per winning trigger ("trigger won the draw, dispatching team").
+//
+// Stolen: MOV ESI,[EDI+0xDC] (8B B7 DC 00 00 00) = 6 bytes, re-emitted by
+// Syringe so ESI is still loaded for the original code.
+// ----------------------------------------------------------------------------
+
+DEFINE_HOOK(0x6F0D26, HouseClass_FindEligibleAITeams_Start, 0x6)
+{
+    GET(AITriggerTypeClass*, pThis, EDI);
+
+    auto const pExt = AITriggerTypeExt::ExtMap.Find(pThis);
+    if (pExt)
+        AITriggerTypeExt::EmitDebugStart(pExt, pThis);
+
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+// DELETED (success) — 0x41FD60, size 13  ✅ CONFIRMED (register verified)
+//
+// AITriggerTypeClass::RegisterSuccess entry. __thiscall, ECX = this.
+// Called from TeamClass's destructor when a team completed its script.
+//   ECX = AITriggerTypeClass* to credit
+// Stolen: PUSH ECX (1) + MOV EDX,[ECX+0x108] (6) + FLD qword [0x7E2800] (6)
+//         = 13 bytes.
+// ----------------------------------------------------------------------------
+
+DEFINE_HOOK(0x41FD60, AITriggerTypeClass_RegisterSuccess_Deleted, 0xD)
+{
+    GET(AITriggerTypeClass*, pThis, ECX);
+
+    auto const pExt = AITriggerTypeExt::ExtMap.Find(pThis);
+    if (pExt)
+        AITriggerTypeExt::EmitDebugDeleted(pExt, pThis);
+
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+// DESTROYED (failure) — 0x41FE20, size 8  ✅ CONFIRMED (register verified)
+//
+// AITriggerTypeClass::RegisterFailure entry. __thiscall, ECX = this.
+// Called from TeamClass's destructor when a team was wiped out before
+// completing its script.
+//   ECX = AITriggerTypeClass* to penalize
+// Stolen: PUSH ECX (1) + MOV EDX,[ECX+0x108] (6) + PUSH ESI (1) = 8 bytes.
+// ----------------------------------------------------------------------------
+
+DEFINE_HOOK(0x41FE20, AITriggerTypeClass_RegisterFailure_Destroyed, 0x8)
+{
+    GET(AITriggerTypeClass*, pThis, ECX);
+
+    auto const pExt = AITriggerTypeExt::ExtMap.Find(pThis);
+    if (pExt)
+        AITriggerTypeExt::EmitDebugDestroyed(pExt, pThis);
+
+    return 0;
+}
+
+// ============================================================================
+// TeamClass destructor — 0x6E8DE0, size 13  ✅ ADDRESS CONFIRMED, hook deferred
+//
+// Found via xrefs INTO RegisterSuccess/RegisterFailure (invoked through vtable
+// slot +0x20, not a plain CALL). This is NOT needed for the AITrigger-scoped
+// events above — RegisterSuccess/Failure already give us the trigger directly.
+// Reserved for the future TeamType-scoped "any team of this type died" feature
+// (a [TeamTypeID.AIExt] sidecar, separate from the lifecycle system). Left
+// documented, not hooked, until that feature is scheduled.
+// ============================================================================

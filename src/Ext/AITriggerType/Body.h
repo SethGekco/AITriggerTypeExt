@@ -387,6 +387,13 @@ public:
         std::string DebugMessageDisplay_Consider;
         std::string DebugMessageDisplay_Cancel;
         std::string DebugMessageDisplay_Finish;
+        // Lifecycle events with confirmed Ghidra hooks (see Hooks.cpp):
+        //   Start     — trigger won the weighted draw and is dispatching its team
+        //   Destroyed — team wiped out before completing its script (failure)
+        //   Deleted   — team completed its script successfully
+        std::string DebugMessageDisplay_Start;
+        std::string DebugMessageDisplay_Destroyed;
+        std::string DebugMessageDisplay_Deleted;
 
         // Priority 1 debug — per-gate detail control (Detail= and DetailTrigger= sub-fields)
         AIExtDetailMode      Debug_Owner_Buildings_Detail;
@@ -445,6 +452,9 @@ public:
         std::string DebugLog_Consider;
         std::string DebugLog_Cancel;
         std::string DebugLog_Finish;
+        std::string DebugLog_Start;
+        std::string DebugLog_Destroyed;
+        std::string DebugLog_Deleted;
 
         // -----------------------------------------------------------------------
         // DEBUG — per-condition auto-verbose log flags
@@ -542,9 +552,15 @@ public:
             , DebugMessageDisplay_Consider  {}
             , DebugMessageDisplay_Cancel {}
             , DebugMessageDisplay_Finish {}
+            , DebugMessageDisplay_Start {}
+            , DebugMessageDisplay_Destroyed {}
+            , DebugMessageDisplay_Deleted {}
             , DebugLog_Consider  {}
             , DebugLog_Cancel {}
             , DebugLog_Finish {}
+            , DebugLog_Start {}
+            , DebugLog_Destroyed {}
+            , DebugLog_Deleted {}
         { }
 
         virtual ~ExtData() = default;
@@ -662,4 +678,7 @@ public:
     static void EmitDebugConsider (ExtData* pExt, AITriggerTypeClass* pThis);
     static void EmitDebugCancel(ExtData* pExt, AITriggerTypeClass* pThis);
     static void EmitDebugFinish(ExtData* pExt, AITriggerTypeClass* pThis);
+    static void EmitDebugStart(ExtData* pExt, AITriggerTypeClass* pThis);
+    static void EmitDebugDestroyed(ExtData* pExt, AITriggerTypeClass* pThis);
+    static void EmitDebugDeleted(ExtData* pExt, AITriggerTypeClass* pThis);
 };
