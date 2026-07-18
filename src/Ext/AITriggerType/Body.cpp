@@ -1178,9 +1178,10 @@ if ((mode == DebugDisplayMode::Overlay || mode == DebugDisplayMode::Both)
             pThis->ID, pExt->DebugLog_Consider.c_str());
     }
 
-    // Per-gate debug quad (log-only)
-    if (mode == DebugDisplayMode::Log || mode == DebugDisplayMode::Both)
-        pExt->EmitGateDebug(pThis, pOwner, pEnemy, "Consider");
+    // Per-gate debug quad (log side here; HUD is Cancel-only inside)
+    pExt->EmitGateDebug(pThis, pOwner, pEnemy, "Consider",
+        mode == DebugDisplayMode::Overlay || mode == DebugDisplayMode::Both,
+        mode == DebugDisplayMode::Log     || mode == DebugDisplayMode::Both);
 }
 
 void AITriggerTypeExt::EmitDebugCancel(
@@ -1206,9 +1207,11 @@ if ((mode == DebugDisplayMode::Overlay || mode == DebugDisplayMode::Both)
             pThis->ID, pExt->DebugLog_Cancel.c_str());
     }
 
-    // Per-gate debug quad (log-only) — the "why was this vetoed" breakdown
-    if (mode == DebugDisplayMode::Log || mode == DebugDisplayMode::Both)
-        pExt->EmitGateDebug(pThis, pOwner, pEnemy, "Cancel");
+    // Per-gate debug quad — the "why was this vetoed" breakdown (log) plus
+    // the failing gate's MessageDisplay on the HUD.
+    pExt->EmitGateDebug(pThis, pOwner, pEnemy, "Cancel",
+        mode == DebugDisplayMode::Overlay || mode == DebugDisplayMode::Both,
+        mode == DebugDisplayMode::Log     || mode == DebugDisplayMode::Both);
 }
 
 void AITriggerTypeExt::EmitDebugFinish(
@@ -1360,13 +1363,9 @@ DEFINE_HOOK(0x41F39F, AITriggerTypeClass_LoadFromINI_PerItem, 0xA)
 
 
 // ============================================================================
-// Priority 1b — detail-building shadow methods
-// Walk all indices without short-circuit. Called by EmitDebug* functions
-// when the modder has enabled Debug.Detail on any gate.
-// Format per entry:
-//   List gates:   "{GateName} {TypeID}({actual}):{min},{max}"
-//   Scalar gates: "{GateName}({actual}):{min},{max}"
-// Entries are categorized into out.passing or out.failing.
+// Detail-building methods — walk every gate entry without short-circuit and
+// append one structured AIExtCheckLine per entry to out.lines. Formatting
+// (log columns / HUD value) happens later in EmitGateDebug.
 // ============================================================================
 
 void AITriggerTypeExt::ExtData::BuildBuildingsDetail(
@@ -1380,14 +1379,8 @@ void AITriggerTypeExt::ExtData::BuildBuildingsDetail(
     {
         if (!gate.Types[i]) continue;
         int count = pHouse->CountOwnedAndPresent(gate.Types[i]);
-        int min_v = gate.GetMin(i);
-        int max_v = gate.GetMax(i);
-        bool ok = gate.CheckCount(i, count);
-
-        char line[128];
-        snprintf(line, sizeof(line), "%s %s(%d):%d,%d",
-                 gate_name, gate.Types[i]->ID, count, min_v, max_v);
-        (ok ? out.passing : out.failing).push_back(line);
+        out.lines.push_back({ gate_name, gate.Types[i]->ID, count,
+            gate.GetMin(i), gate.GetMax(i), gate.CheckCount(i, count) });
     }
 }
 
@@ -1402,14 +1395,8 @@ void AITriggerTypeExt::ExtData::BuildUnitsDetail(
     {
         if (!gate.Types[i]) continue;
         int count = CountOwnedTechnoType(pHouse, gate.Types[i]);
-        int min_v = gate.GetMin(i);
-        int max_v = gate.GetMax(i);
-        bool ok = gate.CheckCount(i, count);
-
-        char line[128];
-        snprintf(line, sizeof(line), "%s %s(%d):%d,%d",
-                 gate_name, gate.Types[i]->ID, count, min_v, max_v);
-        (ok ? out.passing : out.failing).push_back(line);
+        out.lines.push_back({ gate_name, gate.Types[i]->ID, count,
+            gate.GetMin(i), gate.GetMax(i), gate.CheckCount(i, count) });
     }
 }
 
@@ -1429,16 +1416,14 @@ void AITriggerTypeExt::ExtData::BuildScalarDetail(
     int min_display = min.isset() ? min.Get() : 0;
     int max_display = max.isset() ? max.Get() : -1;
 
-    char line[128];
-    snprintf(line, sizeof(line), "%s(%d):%d,%d",
-             gate_name, actual, min_display, max_display);
-    (ok ? out.passing : out.failing).push_back(line);
+    // Scalar gate: no type_id.
+    out.lines.push_back({ gate_name, std::string(), actual,
+        min_display, max_display, ok });
 }
 
 void AITriggerTypeExt::ExtData::EvaluateAndReport(HouseClass* pOwner, HouseClass* pEnemy) const
 {
-    LastCheckReport.passing.clear();
-    LastCheckReport.failing.clear();
+    LastCheckReport.clear();
 
     if (!pOwner) return;
 
@@ -1534,52 +1519,111 @@ void AITriggerTypeExt::ExtData::ParseGateDebug(CCINIClass* pINI, const char* sec
     }
 }
 
-// Emit the tool's per-gate debug quad to the log for a lifecycle event.
-// For each gate with a LogMessage/LogWrite, print its header then the matching
-// PASS/FAIL lines from LastCheckReport. Log-only — per-gate HUD MessageDisplay
-// is a follow-up (and would flood the overlay). EvaluateAndReport tags each
-// line with the base gate root, so we match lines by "<root> " / "<root>(".
+// Format one evaluated gate entry per the gate's DetailsTypes column list
+// (e.g. "Type, Minimum, Maximum, Current"). Empty details_types = all columns.
+// Result looks like "GATECH cur=0 min=1 max=-1".
+static std::string FormatDetailLine(
+    const AIExtCheckLine& L, const std::string& details_types)
+{
+    bool all = details_types.empty();
+    bool wantType = all, wantMin = all, wantMax = all, wantCur = all;
+    if (!all)
+    {
+        std::string lc;
+        lc.reserve(details_types.size());
+        for (char c : details_types) { if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a'); lc.push_back(c); }
+        wantType = lc.find("type")    != std::string::npos;
+        wantMin  = lc.find("minimum") != std::string::npos;
+        wantMax  = lc.find("maximum") != std::string::npos;
+        wantCur  = lc.find("current") != std::string::npos;
+    }
+
+    std::string s;
+    char buf[48];
+    if (wantType) s += L.type_id.empty() ? "(scalar)" : L.type_id;
+    if (wantCur) { snprintf(buf, sizeof(buf), " cur=%d", L.actual); s += buf; }
+    if (wantMin) { snprintf(buf, sizeof(buf), " min=%d", L.min_v);  s += buf; }
+    if (wantMax) { snprintf(buf, sizeof(buf), " max=%d", L.max_v);  s += buf; }
+    if (!s.empty() && s[0] == ' ') s.erase(0, 1);
+    return s;
+}
+
+// Emit the tool's per-gate debug quad for a lifecycle event.
+// Log side: per gate with LogWrite/LogMessage, print its header then one
+//   PASS/FAIL line per entry (columns per DetailsTypes).
+// HUD side (Cancel only): per gate with a FAILING entry and MessageDisplay,
+//   show the message (+ value when ValueDisplay=yes) — the "which gate blocked
+//   this wave" signal, without the every-tick flood a Consider HUD would cause.
 void AITriggerTypeExt::ExtData::EmitGateDebug(
     AITriggerTypeClass* pThis, HouseClass* pOwner, HouseClass* pEnemy,
-    const char* label) const
+    const char* label, bool overlay, bool doLog) const
 {
     if (GateDebug.empty()) return;
+    bool const isCancel = (strcmp(label, "Cancel") == 0);
 
-    bool anyLog = false;
+    // Decide whether we actually need the (non-trivial) evaluation walk.
+    bool needReport = false;
     for (auto const& kv : GateDebug)
-        if (kv.second.log_write || !kv.second.log_message.empty()) { anyLog = true; break; }
-    if (!anyLog) return;
+    {
+        auto const& q = kv.second;
+        if (doLog && (q.log_write || !q.log_message.empty())) { needReport = true; break; }
+        if (overlay && isCancel && !q.message_display.empty()) { needReport = true; break; }
+    }
+    if (!needReport) return;
 
     EvaluateAndReport(pOwner, pEnemy);
 
     for (auto const& kv : GateDebug)
     {
-        const std::string&    root = kv.first;
-        const AIExtGateDebug&  q    = kv.second;
-        if (!q.log_write && q.log_message.empty())
-            continue;
+        const std::string&   root = kv.first;
+        const AIExtGateDebug& q    = kv.second;
 
-        bool headed = false;
-        auto emit = [&](const std::vector<std::string>& lines, const char* verdict)
+        // ── Log: header + per-entry PASS/FAIL, formatted per DetailsTypes ──
+        if (doLog && (q.log_write || !q.log_message.empty()))
         {
-            for (auto const& line : lines)
+            bool headed = false;
+            for (auto const& L : LastCheckReport.lines)
             {
-                if (line.size() > root.size()
-                    && line.compare(0, root.size(), root) == 0
-                    && (line[root.size()] == ' ' || line[root.size()] == '('))
+                if (L.root != root) continue;
+                if (!headed && !q.log_message.empty())
                 {
-                    if (!headed && !q.log_message.empty())
-                    {
-                        Debug::Log("[AIExt %s] %s %s\n",
-                            label, pThis->ID, q.log_message.c_str());
-                        headed = true;
-                    }
-                    Debug::Log("[AIExt %s] %s   %s %s\n",
-                        label, pThis->ID, verdict, line.c_str());
+                    Debug::Log("[AIExt %s] %s %s\n",
+                        label, pThis->ID, q.log_message.c_str());
+                    headed = true;
+                }
+                Debug::Log("[AIExt %s] %s   %s %s %s\n",
+                    label, pThis->ID, L.passed ? "PASS" : "FAIL",
+                    root.c_str(), FormatDetailLine(L, q.details_types).c_str());
+            }
+        }
+
+        // ── HUD: Cancel only, failing gates only ──
+        if (overlay && isCancel && !q.message_display.empty())
+        {
+            std::string valsum;
+            bool anyFail = false;
+            for (auto const& L : LastCheckReport.lines)
+            {
+                if (L.root != root || L.passed) continue;
+                anyFail = true;
+                if (q.value_display)
+                {
+                    char buf[64];
+                    if (L.type_id.empty()) snprintf(buf, sizeof(buf), "%s%d", valsum.empty() ? "" : " ", L.actual);
+                    else                   snprintf(buf, sizeof(buf), "%s%s=%d", valsum.empty() ? "" : " ", L.type_id.c_str(), L.actual);
+                    valsum += buf;
                 }
             }
-        };
-        emit(LastCheckReport.passing, "PASS");
-        emit(LastCheckReport.failing, "FAIL");
+            if (anyFail)
+            {
+                std::wstring wmsg;
+                if (const wchar_t* base = ResolveDebugText(q.message_display))
+                    wmsg = base;
+                if (q.value_display && !valsum.empty())
+                    for (char c : valsum) wmsg.push_back(static_cast<wchar_t>(static_cast<unsigned char>(c)));
+                if (!wmsg.empty())
+                    MessageListClass::Instance.PrintMessage(wmsg.c_str());
+            }
+        }
     }
 }

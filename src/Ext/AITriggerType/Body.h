@@ -184,13 +184,23 @@ struct SWReadyGate
 // Debug detail collection (Priority 1 debug system)
 // Filled by Check* functions when the caller wants per-index status detail.
 // ============================================================================
+// One evaluated gate entry: which gate root, which type (empty for scalar
+// gates), the actual value, the [min,max] window (-1 max = uncapped), and
+// whether it passed. Formatting (log columns, HUD value) is done at emit time.
+struct AIExtCheckLine
+{
+    std::string root;     // e.g. "RequiredOwnerBuildings"
+    std::string type_id;  // TechnoType/Building ID; empty for scalar gates
+    int  actual = 0;
+    int  min_v  = 0;
+    int  max_v  = -1;
+    bool passed = false;
+};
+
 struct AIExtCheckDetail
 {
-    // Filled by the Check function per parallel-list index. Each string
-    // is one line of prose like "GABARR needs [1, -1], has 3 PASS".
-    std::vector<std::string> passing;
-    std::vector<std::string> failing;
-    std::string gate_name;
+    std::vector<AIExtCheckLine> lines;
+    void clear() { lines.clear(); }
 };
 
 // Parsed form of Debug.Detail=passing,failing settings.
@@ -455,12 +465,16 @@ public:
         // populate GateDebug. Called from LoadFromINIFile.
         void ParseGateDebug(CCINIClass* pINI, const char* section);
 
-        // Emit per-gate debug (the tool's quad) to the log for a lifecycle
-        // event. Reads GateDebug + the LastCheckReport built by EvaluateAndReport.
+        // Emit the tool's per-gate debug quad for a lifecycle event.
+        //   doLog   — write LogMessage headers + per-entry PASS/FAIL lines
+        //             (columns per each gate's DetailsTypes).
+        //   overlay — on Cancel only, show each FAILING gate's MessageDisplay
+        //             on the HUD (+ its value when ValueDisplay=yes). Consider
+        //             is skipped for HUD — it fires every tick and would flood.
         // label is the bracket tag ("Consider"/"Cancel").
         void EmitGateDebug(
             AITriggerTypeClass* pThis, HouseClass* pOwner, HouseClass* pEnemy,
-            const char* label) const;
+            const char* label, bool overlay, bool doLog) const;
 
 
         // -----------------------------------------------------------------------
