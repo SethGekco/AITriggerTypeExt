@@ -192,11 +192,11 @@ DEFINE_HOOK(0x41EAC0, AITriggerTypeClass_ConditionMet_Gate, 0x5)
             pOwner ? pOwner->Type->ID : "null",
             pEnemy ? pEnemy->Type->ID : "null"
         );
-        AITriggerTypeExt::EmitDebugCancel(pExt, pThis);
+        AITriggerTypeExt::EmitDebugCancel(pExt, pThis, pOwner, pEnemy);
         return ReturnFalse;
     }
 
-    AITriggerTypeExt::EmitDebugConsider(pExt, pThis);
+    AITriggerTypeExt::EmitDebugConsider(pExt, pThis, pOwner, pEnemy);
     return 0;
 }
 

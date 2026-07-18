@@ -441,6 +441,11 @@ public:
         // Priority 1b — orchestrator: walks all set gates, populates LastCheckReport
         void EvaluateAndReport(HouseClass* pOwner, HouseClass* pEnemy) const;
 
+        // Priority 1b — OR the per-gate Debug.Detail flags across all gates
+        // whose Debug.DetailTrigger is active for a lifecycle event.
+        //   which: 0 = Consider (start mask bit), 1 = Cancel
+        void AggregateDetail(int which, bool& show_passing, bool& show_failing) const;
+
 
         // -----------------------------------------------------------------------
         // DEBUG — log file (raw ASCII string; written to debug.log)
@@ -675,8 +680,10 @@ public:
     static DebugDisplayMode GetDebugMode();
 
     // Lifecycle debug emitters — called from Hooks.cpp gate hook
-    static void EmitDebugConsider (ExtData* pExt, AITriggerTypeClass* pThis);
-    static void EmitDebugCancel(ExtData* pExt, AITriggerTypeClass* pThis);
+    static void EmitDebugConsider (ExtData* pExt, AITriggerTypeClass* pThis,
+        HouseClass* pOwner, HouseClass* pEnemy);
+    static void EmitDebugCancel(ExtData* pExt, AITriggerTypeClass* pThis,
+        HouseClass* pOwner, HouseClass* pEnemy);
     static void EmitDebugFinish(ExtData* pExt, AITriggerTypeClass* pThis);
     static void EmitDebugStart(ExtData* pExt, AITriggerTypeClass* pThis);
     static void EmitDebugDestroyed(ExtData* pExt, AITriggerTypeClass* pThis);

@@ -1223,8 +1223,14 @@ static const wchar_t* ResolveDebugText(const std::string& src)
     return StringTable::LoadString(src.c_str());
 }
 
+// Defined further down; appends per-gate PASS/FAIL detail to the log.
+static void EmitDetailLog(
+    AITriggerTypeExt::ExtData* pExt, AITriggerTypeClass* pThis,
+    HouseClass* pOwner, HouseClass* pEnemy, int which, const char* label);
+
 void AITriggerTypeExt::EmitDebugConsider(
-    ExtData* pExt, AITriggerTypeClass* pThis)
+    ExtData* pExt, AITriggerTypeClass* pThis,
+    HouseClass* pOwner, HouseClass* pEnemy)
 {
     if (!pExt || !pThis) return;
     auto const mode = GetDebugMode();
@@ -1246,10 +1252,15 @@ if ((mode == DebugDisplayMode::Overlay || mode == DebugDisplayMode::Both)
         Debug::Log("[AIExt Consider] %s: %s\n",
             pThis->ID, pExt->DebugLog_Consider.c_str());
     }
+
+    // Per-gate detail (log-only)
+    if (mode == DebugDisplayMode::Log || mode == DebugDisplayMode::Both)
+        EmitDetailLog(pExt, pThis, pOwner, pEnemy, 0, "Consider");
 }
 
 void AITriggerTypeExt::EmitDebugCancel(
-    ExtData* pExt, AITriggerTypeClass* pThis)
+    ExtData* pExt, AITriggerTypeClass* pThis,
+    HouseClass* pOwner, HouseClass* pEnemy)
 {
     if (!pExt || !pThis) return;
     auto const mode = GetDebugMode();
@@ -1269,6 +1280,10 @@ if ((mode == DebugDisplayMode::Overlay || mode == DebugDisplayMode::Both)
         Debug::Log("[AIExt Cancel] %s: %s\n",
             pThis->ID, pExt->DebugLog_Cancel.c_str());
     }
+
+    // Per-gate detail (log-only) — the "why was this vetoed" breakdown
+    if (mode == DebugDisplayMode::Log || mode == DebugDisplayMode::Both)
+        EmitDetailLog(pExt, pThis, pOwner, pEnemy, 1, "Cancel");
 }
 
 void AITriggerTypeExt::EmitDebugFinish(
@@ -1544,4 +1559,67 @@ void AITriggerTypeExt::ExtData::EvaluateAndReport(HouseClass* pOwner, HouseClass
     // PowerOutput / TechLevel: verify field names first
     // Allies: multi-house walk (see CheckAllies for pattern)
     // Neutral: global neutral house lookup
+}
+
+// Aggregate the per-gate Debug.Detail flags across every gate whose
+// Debug.DetailTrigger is active for the given lifecycle event.
+//   which: 0 = Consider (the 'start' mask bit), 1 = Cancel
+// Returns via out-params whether any gate wants passing / failing lines shown.
+// The DetailTrigger mask predates the lifecycle-vocabulary expansion, so its
+// 'start' bit maps to Consider and 'cancel' bit to Cancel; 'finish' is unused
+// (that event is still a dead scaffold).
+void AITriggerTypeExt::ExtData::AggregateDetail(
+    int which, bool& show_passing, bool& show_failing) const
+{
+    show_passing = false;
+    show_failing = false;
+
+    struct Pair { const AIExtDetailMode* mode; const AIExtLifecycleMask* trig; };
+    const Pair pairs[] = {
+        { &Debug_Owner_Buildings_Detail,   &Debug_Owner_Buildings_DetailTrigger   },
+        { &Debug_Enemy_Buildings_Detail,   &Debug_Enemy_Buildings_DetailTrigger   },
+        { &Debug_Enemy_Units_Detail,       &Debug_Enemy_Units_DetailTrigger       },
+        { &Debug_Neutral_Buildings_Detail, &Debug_Neutral_Buildings_DetailTrigger },
+        { &Debug_Owner_Credits_Detail,     &Debug_Owner_Credits_DetailTrigger     },
+        { &Debug_Enemy_Credits_Detail,     &Debug_Enemy_Credits_DetailTrigger     },
+        { &Debug_Owner_Power_Detail,       &Debug_Owner_Power_DetailTrigger        },
+        { &Debug_Enemy_Power_Detail,       &Debug_Enemy_Power_DetailTrigger        },
+        { &Debug_ElapsedTime_Detail,       &Debug_ElapsedTime_DetailTrigger        },
+    };
+
+    for (auto const& p : pairs)
+    {
+        bool active = (which == 0 && p.trig->on_start)
+                   || (which == 1 && p.trig->on_cancel);
+        if (!active)
+            continue;
+        if (p.mode->show_passing) show_passing = true;
+        if (p.mode->show_failing) show_failing = true;
+    }
+}
+
+// Append per-gate PASS/FAIL detail lines to the debug log for a lifecycle
+// event, if any gate requested it. Detail is log-only — dumping many lines
+// onto the HUD overlay would flood it. `which` matches AggregateDetail.
+static void EmitDetailLog(
+    AITriggerTypeExt::ExtData* pExt,
+    AITriggerTypeClass* pThis,
+    HouseClass* pOwner,
+    HouseClass* pEnemy,
+    int which,
+    const char* label)
+{
+    bool show_passing = false, show_failing = false;
+    pExt->AggregateDetail(which, show_passing, show_failing);
+    if (!show_passing && !show_failing)
+        return;
+
+    pExt->EvaluateAndReport(pOwner, pEnemy);
+
+    if (show_passing)
+        for (auto const& s : pExt->LastCheckReport.passing)
+            Debug::Log("[AIExt %s] %s   PASS %s\n", label, pThis->ID, s.c_str());
+    if (show_failing)
+        for (auto const& s : pExt->LastCheckReport.failing)
+            Debug::Log("[AIExt %s] %s   FAIL %s\n", label, pThis->ID, s.c_str());
 }
