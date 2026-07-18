@@ -232,28 +232,61 @@ DEFINE_HOOK(0x41E720, AITriggerTypeClass_ConditionMet_Diag, 0x6)
 // ============================================================================
 
 // ----------------------------------------------------------------------------
-// START — 0x6F0D26, size 6  ✅ CONFIRMED (register verified)
+// START + REJECT — 0x6F0D26, size 6  ✅ CONFIRMED (registers + stack verified)
 //
-// Inside HouseClass::FindEligibleAITeams (FUN_006F0AB0). At 0x6F0D1B the
-// weighted-random winner is picked (MOV EDI,[EBX+ECX*8]); the following
+// Inside HouseClass::FindEligibleAITeams (FUN_006F0AB0). The function builds a
+// weighted distribution of every trigger that passed ConditionMet, then draws
+// a winner. At 0x6F0D1B the winner is picked (MOV EDI,[EBX+ECX*8]); the
 // TEST/JE at 0x6F0D1E/0x6F0D20 guarantees EDI != null by 0x6F0D26. Here the
 // engine reads the winner's Team1 (MOV ESI,[EDI+0xDC]) to dispatch it.
-//   EDI = winning AITriggerTypeClass*
+//   EDI        = winning AITriggerTypeClass*
+//   [ESP+0x48] = distribution array base   (engine reads it at 0x6F0D01)
+//   [ESP+0x54] = distribution entry count  (engine reads it at 0x6F0CF5)
+// Distribution entries are 8 bytes: { AITriggerTypeClass* @ +0, int weight @ +4 }.
+//
 // This is the earliest point the winning trigger is known — the downstream
 // CreateTeam loop (~0x4F8AB2) no longer has the trigger, only its TeamTypes.
-// Fires once per winning trigger ("trigger won the draw, dispatching team").
+//   Start  fires once for the winner ("won the draw, dispatching team").
+//   Reject fires for every OTHER distribution entry (passed ConditionMet but
+//          lost the weighted draw). Reading the same slots the engine's own
+//          selection loop uses keeps this safe.
 //
 // Stolen: MOV ESI,[EDI+0xDC] (8B B7 DC 00 00 00) = 6 bytes, re-emitted by
 // Syringe so ESI is still loaded for the original code.
 // ----------------------------------------------------------------------------
 
+struct AITriggerDistEntry
+{
+    AITriggerTypeClass* Trigger;
+    int                 Weight;
+};
+
 DEFINE_HOOK(0x6F0D26, HouseClass_FindEligibleAITeams_Start, 0x6)
 {
-    GET(AITriggerTypeClass*, pThis, EDI);
+    GET(AITriggerTypeClass*, pWinner, EDI);
 
-    auto const pExt = AITriggerTypeExt::ExtMap.Find(pThis);
-    if (pExt)
-        AITriggerTypeExt::EmitDebugStart(pExt, pThis);
+    // Start — the winning trigger
+    if (auto const pWinExt = AITriggerTypeExt::ExtMap.Find(pWinner))
+        AITriggerTypeExt::EmitDebugStart(pWinExt, pWinner);
+
+    // Reject — every other trigger in the weighted distribution lost the draw.
+    // Skip the whole walk when debug output is off (shipping default) so we
+    // don't do a hash lookup per losing trigger every selection cycle.
+    GET_STACK(AITriggerDistEntry*, pDist, 0x48);
+    GET_STACK(int,                 count, 0x54);
+
+    if (AITriggerTypeExt::GetDebugMode() != AITriggerTypeExt::DebugDisplayMode::Off
+        && pDist && count > 0)
+    {
+        for (int i = 0; i < count; ++i)
+        {
+            auto const pT = pDist[i].Trigger;
+            if (!pT || pT == pWinner)
+                continue;
+            if (auto const pExt = AITriggerTypeExt::ExtMap.Find(pT))
+                AITriggerTypeExt::EmitDebugReject(pExt, pT);
+        }
+    }
 
     return 0;
 }

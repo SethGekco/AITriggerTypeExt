@@ -450,6 +450,7 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     ReadRawString(exINI, section, "DebugMessageDisplay.Start", DebugMessageDisplay_Start);
     ReadRawString(exINI, section, "DebugMessageDisplay.Destroyed", DebugMessageDisplay_Destroyed);
     ReadRawString(exINI, section, "DebugMessageDisplay.Deleted", DebugMessageDisplay_Deleted);
+    ReadRawString(exINI, section, "DebugMessageDisplay.Reject", DebugMessageDisplay_Reject);
 
     // Priority 1 debug — Detail sub-fields (scaffolding only, behavior in follow-up)
     ReadDetailMode    (exINI, section, "RequiredOwnerBuildings.Debug.Detail",          Debug_Owner_Buildings_Detail);
@@ -486,6 +487,8 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
         DebugLog_Destroyed = exINI.value();
     if (exINI.ReadString(section, "DebugLog.Deleted"))
         DebugLog_Deleted = exINI.value();
+    if (exINI.ReadString(section, "DebugLog.Reject"))
+        DebugLog_Reject = exINI.value();
 
     // -----------------------------------------------------------------------
     // Debug — per-condition auto-verbose flags
@@ -1346,6 +1349,14 @@ void AITriggerTypeExt::EmitDebugDeleted(
     if (!pExt || !pThis) return;
     EmitLifecycle("Deleted", pThis,
         pExt->DebugMessageDisplay_Deleted, pExt->DebugLog_Deleted);
+}
+
+void AITriggerTypeExt::EmitDebugReject(
+    ExtData* pExt, AITriggerTypeClass* pThis)
+{
+    if (!pExt || !pThis) return;
+    EmitLifecycle("Reject", pThis,
+        pExt->DebugMessageDisplay_Reject, pExt->DebugLog_Reject);
 }
 
 // ============================================================================

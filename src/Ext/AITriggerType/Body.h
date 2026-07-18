@@ -394,6 +394,10 @@ public:
         std::string DebugMessageDisplay_Start;
         std::string DebugMessageDisplay_Destroyed;
         std::string DebugMessageDisplay_Deleted;
+        // Reject — trigger passed ConditionMet but lost the weighted draw.
+        // Fires once per losing trigger per selection, so it's opt-in only
+        // (not auto-emitted by the tool) to avoid log spam.
+        std::string DebugMessageDisplay_Reject;
 
         // Priority 1 debug — per-gate detail control (Detail= and DetailTrigger= sub-fields)
         AIExtDetailMode      Debug_Owner_Buildings_Detail;
@@ -460,6 +464,7 @@ public:
         std::string DebugLog_Start;
         std::string DebugLog_Destroyed;
         std::string DebugLog_Deleted;
+        std::string DebugLog_Reject;
 
         // -----------------------------------------------------------------------
         // DEBUG — per-condition auto-verbose log flags
@@ -560,12 +565,14 @@ public:
             , DebugMessageDisplay_Start {}
             , DebugMessageDisplay_Destroyed {}
             , DebugMessageDisplay_Deleted {}
+            , DebugMessageDisplay_Reject {}
             , DebugLog_Consider  {}
             , DebugLog_Cancel {}
             , DebugLog_Finish {}
             , DebugLog_Start {}
             , DebugLog_Destroyed {}
             , DebugLog_Deleted {}
+            , DebugLog_Reject {}
         { }
 
         virtual ~ExtData() = default;
@@ -688,4 +695,5 @@ public:
     static void EmitDebugStart(ExtData* pExt, AITriggerTypeClass* pThis);
     static void EmitDebugDestroyed(ExtData* pExt, AITriggerTypeClass* pThis);
     static void EmitDebugDeleted(ExtData* pExt, AITriggerTypeClass* pThis);
+    static void EmitDebugReject(ExtData* pExt, AITriggerTypeClass* pThis);
 };
