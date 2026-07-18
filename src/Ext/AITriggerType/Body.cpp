@@ -198,64 +198,6 @@ static void ReadBoolFlag(
             || _stricmp(v, "1") == 0);
     }
 }
-// Read a raw string label from INI into a std::string.
-// CSF lookup happens at display time (see EmitDebugConsider / EmitDebugCancel).
-// Parse comma-list of passing/failing/none/never into a mode struct.
-static void ReadDetailMode(
-    INI_EX& exINI,
-    const char* pSection,
-    const char* pKey,
-    AIExtDetailMode& out)
-{
-    if (!exINI.ReadString(pSection, pKey)) return;
-    out.show_passing = false;
-    out.show_failing = false;
-    const char* v = exINI.value();
-    if (!v || !*v) return;
-    char buf[128];
-    strncpy_s(buf, sizeof(buf), v, _TRUNCATE);
-    char* ctx = nullptr;
-    for (char* tok = strtok_s(buf, ",", &ctx); tok; tok = strtok_s(nullptr, ",", &ctx))
-    {
-        while (*tok == '  ' || *tok == '\t') tok++;
-        char* end = tok + strlen(tok);
-        while (end > tok && (end[-1] == ' ' || end[-1] == '\t')) *(--end) = 0;
-        if (_stricmp(tok, "passing") == 0) out.show_passing = true;
-        else if (_stricmp(tok, "failing") == 0) out.show_failing = true;
-        else if (_stricmp(tok, "none") == 0 || _stricmp(tok, "never") == 0) {
-            out.show_passing = false; out.show_failing = false; return;
-        }
-    }
-}
-
-// Parse comma-list of start/cancel/finish/never into a lifecycle mask.
-static void ReadLifecycleMask(
-    INI_EX& exINI,
-    const char* pSection,
-    const char* pKey,
-    AIExtLifecycleMask& out)
-{
-    if (!exINI.ReadString(pSection, pKey)) return;
-    out.on_start = false; out.on_cancel = false; out.on_finish = false;
-    const char* v = exINI.value();
-    if (!v || !*v) return;
-    char buf[128];
-    strncpy_s(buf, sizeof(buf), v, _TRUNCATE);
-    char* ctx = nullptr;
-    for (char* tok = strtok_s(buf, ",", &ctx); tok; tok = strtok_s(nullptr, ",", &ctx))
-    {
-        while (*tok == ' ' || *tok == '\t') tok++;
-        char* end = tok + strlen(tok);
-        while (end > tok && (end[-1] == ' ' || end[-1] == '\t')) *(--end) = 0;
-        if (_stricmp(tok, "start") == 0) out.on_start = true;
-        else if (_stricmp(tok, "cancel") == 0) out.on_cancel = true;
-        else if (_stricmp(tok, "finish") == 0) out.on_finish = true;
-        else if (_stricmp(tok, "never") == 0 || _stricmp(tok, "none") == 0) {
-            out.on_start = false; out.on_cancel = false; out.on_finish = false; return;
-        }
-    }
-}
-
 static void ReadRawString(
     INI_EX& exINI,
     const char* pSection,
@@ -452,25 +394,10 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     ReadRawString(exINI, section, "DebugMessageDisplay.Deleted", DebugMessageDisplay_Deleted);
     ReadRawString(exINI, section, "DebugMessageDisplay.Reject", DebugMessageDisplay_Reject);
 
-    // Priority 1 debug — Detail sub-fields (scaffolding only, behavior in follow-up)
-    ReadDetailMode    (exINI, section, "RequiredOwnerBuildings.Debug.Detail",          Debug_Owner_Buildings_Detail);
-    ReadLifecycleMask (exINI, section, "RequiredOwnerBuildings.Debug.DetailTrigger",   Debug_Owner_Buildings_DetailTrigger);
-    ReadDetailMode    (exINI, section, "RequiredEnemyBuildings.Debug.Detail",          Debug_Enemy_Buildings_Detail);
-    ReadLifecycleMask (exINI, section, "RequiredEnemyBuildings.Debug.DetailTrigger",   Debug_Enemy_Buildings_DetailTrigger);
-    ReadDetailMode    (exINI, section, "RequiredEnemyUnits.Debug.Detail",              Debug_Enemy_Units_Detail);
-    ReadLifecycleMask (exINI, section, "RequiredEnemyUnits.Debug.DetailTrigger",       Debug_Enemy_Units_DetailTrigger);
-    ReadDetailMode    (exINI, section, "RequiredNeutralBuildings.Debug.Detail",        Debug_Neutral_Buildings_Detail);
-    ReadLifecycleMask (exINI, section, "RequiredNeutralBuildings.Debug.DetailTrigger", Debug_Neutral_Buildings_DetailTrigger);
-    ReadDetailMode    (exINI, section, "RequiredOwnerCreditsMin.Debug.Detail",         Debug_Owner_Credits_Detail);
-    ReadLifecycleMask (exINI, section, "RequiredOwnerCreditsMin.Debug.DetailTrigger",  Debug_Owner_Credits_DetailTrigger);
-    ReadDetailMode    (exINI, section, "RequiredEnemyCreditsMax.Debug.Detail",         Debug_Enemy_Credits_Detail);
-    ReadLifecycleMask (exINI, section, "RequiredEnemyCreditsMax.Debug.DetailTrigger",  Debug_Enemy_Credits_DetailTrigger);
-    ReadDetailMode    (exINI, section, "RequiredOwnerPowerMin.Debug.Detail",           Debug_Owner_Power_Detail);
-    ReadLifecycleMask (exINI, section, "RequiredOwnerPowerMin.Debug.DetailTrigger",    Debug_Owner_Power_DetailTrigger);
-    ReadDetailMode    (exINI, section, "RequiredEnemyPowerMax.Debug.Detail",           Debug_Enemy_Power_Detail);
-    ReadLifecycleMask (exINI, section, "RequiredEnemyPowerMax.Debug.DetailTrigger",    Debug_Enemy_Power_DetailTrigger);
-    ReadDetailMode    (exINI, section, "RequiredElapsedTimeMin.Debug.Detail",          Debug_ElapsedTime_Detail);
-    ReadLifecycleMask (exINI, section, "RequiredElapsedTimeMin.Debug.DetailTrigger",   Debug_ElapsedTime_DetailTrigger);
+    // Per-gate debug quads emitted by the wave-generator tool
+    // (<root>.Debug.MessageDisplay/ValueDisplay/LogMessage/LogWrite/
+    //  DetailsDisplay/DetailsTypes). Scanned generically from section keys.
+    ParseGateDebug(pINI, section);
 
     // -----------------------------------------------------------------------
     // Debug — raw log strings
@@ -1226,11 +1153,6 @@ static const wchar_t* ResolveDebugText(const std::string& src)
     return StringTable::LoadString(src.c_str());
 }
 
-// Defined further down; appends per-gate PASS/FAIL detail to the log.
-static void EmitDetailLog(
-    AITriggerTypeExt::ExtData* pExt, AITriggerTypeClass* pThis,
-    HouseClass* pOwner, HouseClass* pEnemy, int which, const char* label);
-
 void AITriggerTypeExt::EmitDebugConsider(
     ExtData* pExt, AITriggerTypeClass* pThis,
     HouseClass* pOwner, HouseClass* pEnemy)
@@ -1256,9 +1178,9 @@ if ((mode == DebugDisplayMode::Overlay || mode == DebugDisplayMode::Both)
             pThis->ID, pExt->DebugLog_Consider.c_str());
     }
 
-    // Per-gate detail (log-only)
+    // Per-gate debug quad (log-only)
     if (mode == DebugDisplayMode::Log || mode == DebugDisplayMode::Both)
-        EmitDetailLog(pExt, pThis, pOwner, pEnemy, 0, "Consider");
+        pExt->EmitGateDebug(pThis, pOwner, pEnemy, "Consider");
 }
 
 void AITriggerTypeExt::EmitDebugCancel(
@@ -1284,9 +1206,9 @@ if ((mode == DebugDisplayMode::Overlay || mode == DebugDisplayMode::Both)
             pThis->ID, pExt->DebugLog_Cancel.c_str());
     }
 
-    // Per-gate detail (log-only) — the "why was this vetoed" breakdown
+    // Per-gate debug quad (log-only) — the "why was this vetoed" breakdown
     if (mode == DebugDisplayMode::Log || mode == DebugDisplayMode::Both)
-        EmitDetailLog(pExt, pThis, pOwner, pEnemy, 1, "Cancel");
+        pExt->EmitGateDebug(pThis, pOwner, pEnemy, "Cancel");
 }
 
 void AITriggerTypeExt::EmitDebugFinish(
@@ -1572,65 +1494,92 @@ void AITriggerTypeExt::ExtData::EvaluateAndReport(HouseClass* pOwner, HouseClass
     // Neutral: global neutral house lookup
 }
 
-// Aggregate the per-gate Debug.Detail flags across every gate whose
-// Debug.DetailTrigger is active for the given lifecycle event.
-//   which: 0 = Consider (the 'start' mask bit), 1 = Cancel
-// Returns via out-params whether any gate wants passing / failing lines shown.
-// The DetailTrigger mask predates the lifecycle-vocabulary expansion, so its
-// 'start' bit maps to Consider and 'cancel' bit to Cancel; 'finish' is unused
-// (that event is still a dead scaffold).
-void AITriggerTypeExt::ExtData::AggregateDetail(
-    int which, bool& show_passing, bool& show_failing) const
+// Small yes/true/1 parser for the tool's boolean debug sub-keys.
+static bool ParseYesish(const char* s)
 {
-    show_passing = false;
-    show_failing = false;
+    return s && (_stricmp(s, "yes") == 0 || _stricmp(s, "true") == 0 || s[0] == '1');
+}
 
-    struct Pair { const AIExtDetailMode* mode; const AIExtLifecycleMask* trig; };
-    const Pair pairs[] = {
-        { &Debug_Owner_Buildings_Detail,   &Debug_Owner_Buildings_DetailTrigger   },
-        { &Debug_Enemy_Buildings_Detail,   &Debug_Enemy_Buildings_DetailTrigger   },
-        { &Debug_Enemy_Units_Detail,       &Debug_Enemy_Units_DetailTrigger       },
-        { &Debug_Neutral_Buildings_Detail, &Debug_Neutral_Buildings_DetailTrigger },
-        { &Debug_Owner_Credits_Detail,     &Debug_Owner_Credits_DetailTrigger     },
-        { &Debug_Enemy_Credits_Detail,     &Debug_Enemy_Credits_DetailTrigger     },
-        { &Debug_Owner_Power_Detail,       &Debug_Owner_Power_DetailTrigger        },
-        { &Debug_Enemy_Power_Detail,       &Debug_Enemy_Power_DetailTrigger        },
-        { &Debug_ElapsedTime_Detail,       &Debug_ElapsedTime_DetailTrigger        },
-    };
+// Scan the [Trigger.AIExt] section for "<root>.Debug.<subkey>" keys and build
+// the GateDebug map. Generic so it captures every gate the tool emits without
+// hardcoding each root.
+void AITriggerTypeExt::ExtData::ParseGateDebug(CCINIClass* pINI, const char* section)
+{
+    GateDebug.clear();
+    if (!pINI) return;
 
-    for (auto const& p : pairs)
+    int const keyCount = pINI->GetKeyCount(section);
+    for (int i = 0; i < keyCount; ++i)
     {
-        bool active = (which == 0 && p.trig->on_start)
-                   || (which == 1 && p.trig->on_cancel);
-        if (!active)
-            continue;
-        if (p.mode->show_passing) show_passing = true;
-        if (p.mode->show_failing) show_failing = true;
+        const char* key = pINI->GetKeyName(section, i);
+        if (!key) continue;
+
+        const char* marker = strstr(key, ".Debug.");
+        if (!marker) continue;               // skips trigger-level DebugMessageDisplay.* and .DebugLog
+
+        std::string root(key, static_cast<size_t>(marker - key));
+        const char* sub = marker + 7;        // strlen(".Debug.")
+
+        char buf[256];
+        pINI->ReadString(section, key, "", buf, sizeof(buf));
+
+        auto& q = GateDebug[root];
+        if      (_stricmp(sub, "MessageDisplay") == 0) q.message_display  = buf;
+        else if (_stricmp(sub, "LogMessage")     == 0) q.log_message      = buf;
+        else if (_stricmp(sub, "DetailsTypes")   == 0) q.details_types    = buf;
+        else if (_stricmp(sub, "ValueDisplay")   == 0) q.value_display    = ParseYesish(buf);
+        else if (_stricmp(sub, "LogWrite")       == 0) q.log_write        = ParseYesish(buf);
+        else if (_stricmp(sub, "DetailsDisplay") == 0) q.details_display  = ParseYesish(buf);
+        // unknown sub-keys are ignored
     }
 }
 
-// Append per-gate PASS/FAIL detail lines to the debug log for a lifecycle
-// event, if any gate requested it. Detail is log-only — dumping many lines
-// onto the HUD overlay would flood it. `which` matches AggregateDetail.
-static void EmitDetailLog(
-    AITriggerTypeExt::ExtData* pExt,
-    AITriggerTypeClass* pThis,
-    HouseClass* pOwner,
-    HouseClass* pEnemy,
-    int which,
-    const char* label)
+// Emit the tool's per-gate debug quad to the log for a lifecycle event.
+// For each gate with a LogMessage/LogWrite, print its header then the matching
+// PASS/FAIL lines from LastCheckReport. Log-only — per-gate HUD MessageDisplay
+// is a follow-up (and would flood the overlay). EvaluateAndReport tags each
+// line with the base gate root, so we match lines by "<root> " / "<root>(".
+void AITriggerTypeExt::ExtData::EmitGateDebug(
+    AITriggerTypeClass* pThis, HouseClass* pOwner, HouseClass* pEnemy,
+    const char* label) const
 {
-    bool show_passing = false, show_failing = false;
-    pExt->AggregateDetail(which, show_passing, show_failing);
-    if (!show_passing && !show_failing)
-        return;
+    if (GateDebug.empty()) return;
 
-    pExt->EvaluateAndReport(pOwner, pEnemy);
+    bool anyLog = false;
+    for (auto const& kv : GateDebug)
+        if (kv.second.log_write || !kv.second.log_message.empty()) { anyLog = true; break; }
+    if (!anyLog) return;
 
-    if (show_passing)
-        for (auto const& s : pExt->LastCheckReport.passing)
-            Debug::Log("[AIExt %s] %s   PASS %s\n", label, pThis->ID, s.c_str());
-    if (show_failing)
-        for (auto const& s : pExt->LastCheckReport.failing)
-            Debug::Log("[AIExt %s] %s   FAIL %s\n", label, pThis->ID, s.c_str());
+    EvaluateAndReport(pOwner, pEnemy);
+
+    for (auto const& kv : GateDebug)
+    {
+        const std::string&    root = kv.first;
+        const AIExtGateDebug&  q    = kv.second;
+        if (!q.log_write && q.log_message.empty())
+            continue;
+
+        bool headed = false;
+        auto emit = [&](const std::vector<std::string>& lines, const char* verdict)
+        {
+            for (auto const& line : lines)
+            {
+                if (line.size() > root.size()
+                    && line.compare(0, root.size(), root) == 0
+                    && (line[root.size()] == ' ' || line[root.size()] == '('))
+                {
+                    if (!headed && !q.log_message.empty())
+                    {
+                        Debug::Log("[AIExt %s] %s %s\n",
+                            label, pThis->ID, q.log_message.c_str());
+                        headed = true;
+                    }
+                    Debug::Log("[AIExt %s] %s   %s %s\n",
+                        label, pThis->ID, verdict, line.c_str());
+                }
+            }
+        };
+        emit(LastCheckReport.passing, "PASS");
+        emit(LastCheckReport.failing, "FAIL");
+    }
 }

@@ -65,6 +65,7 @@
 #include <ScenarioClass.h>
 #include <string>
 #include <vector>
+#include <map>
 #include <Utilities/Container.h>
 #include <Utilities/TemplateDef.h>
 
@@ -207,6 +208,24 @@ struct AIExtLifecycleMask
     bool on_cancel = false;
     bool on_finish = false;
     bool anything() const { return on_start || on_cancel || on_finish; }
+};
+
+// Parsed form of the wave-generator tool's per-gate debug "quad", e.g.
+//   RequiredOwnerBuildings.Debug.MessageDisplay=NOSTR:Owner buildings:
+//   RequiredOwnerBuildings.Debug.ValueDisplay=yes
+//   RequiredOwnerBuildings.Debug.LogMessage=Owner buildings:
+//   RequiredOwnerBuildings.Debug.LogWrite=yes
+//   RequiredOwnerBuildings.Debug.DetailsDisplay=yes
+//   RequiredOwnerBuildings.Debug.DetailsTypes=Type, Minimum, Maximum, Current
+// Keyed in ExtData::GateDebug by the gate root (text before ".Debug.").
+struct AIExtGateDebug
+{
+    std::string message_display;   // HUD text prefix (NOSTR:/STT:/bare CSF key)
+    bool        value_display  = false;
+    std::string log_message;       // debug.log text prefix
+    bool        log_write      = false; // auto pass/fail detail line(s) to log
+    bool        details_display = false;
+    std::string details_types;     // e.g. "Type, Minimum, Maximum, Current"
 };
 
 class AITriggerTypeExt
@@ -399,27 +418,12 @@ public:
         // (not auto-emitted by the tool) to avoid log spam.
         std::string DebugMessageDisplay_Reject;
 
-        // Priority 1 debug — per-gate detail control (Detail= and DetailTrigger= sub-fields)
-        AIExtDetailMode      Debug_Owner_Buildings_Detail;
-        AIExtLifecycleMask   Debug_Owner_Buildings_DetailTrigger { false, false, true };
-        AIExtDetailMode      Debug_Enemy_Buildings_Detail;
-        AIExtLifecycleMask   Debug_Enemy_Buildings_DetailTrigger { false, false, true };
-        AIExtDetailMode      Debug_Enemy_Units_Detail;
-        AIExtLifecycleMask   Debug_Enemy_Units_DetailTrigger { false, false, true };
-        AIExtDetailMode      Debug_Neutral_Buildings_Detail;
-        AIExtLifecycleMask   Debug_Neutral_Buildings_DetailTrigger { false, false, true };
-        AIExtDetailMode      Debug_Owner_Credits_Detail;
-        AIExtLifecycleMask   Debug_Owner_Credits_DetailTrigger { false, false, true };
-        AIExtDetailMode      Debug_Enemy_Credits_Detail;
-        AIExtLifecycleMask   Debug_Enemy_Credits_DetailTrigger { false, false, true };
-        AIExtDetailMode      Debug_Owner_Power_Detail;
-        AIExtLifecycleMask   Debug_Owner_Power_DetailTrigger { false, false, true };
-        AIExtDetailMode      Debug_Enemy_Power_Detail;
-        AIExtLifecycleMask   Debug_Enemy_Power_DetailTrigger { false, false, true };
-        AIExtDetailMode      Debug_ElapsedTime_Detail;
-        AIExtLifecycleMask   Debug_ElapsedTime_DetailTrigger { false, false, true };
+        // Per-gate debug quads from the wave-generator tool, keyed by gate root
+        // (e.g. "RequiredOwnerBuildings"). Populated generically by scanning the
+        // [Trigger.AIExt] section for "<root>.Debug.<subkey>" keys.
+        std::map<std::string, AIExtGateDebug> GateDebug;
 
-        // Priority 1b — mutable check report populated by EvaluateAndReport()
+        // mutable check report populated by EvaluateAndReport()
         // Reset at the start of each evaluation; consumed by EmitDebug* functions.
         mutable AIExtCheckDetail LastCheckReport;
 
@@ -442,13 +446,21 @@ public:
             const Nullable<int>& max,
             AIExtCheckDetail& out) const;
 
-        // Priority 1b — orchestrator: walks all set gates, populates LastCheckReport
+        // Orchestrator: walks all set gates, populates LastCheckReport with
+        // one "root TypeID(actual):min,max" (or "root(actual):min,max") line
+        // per entry, categorized into passing / failing.
         void EvaluateAndReport(HouseClass* pOwner, HouseClass* pEnemy) const;
 
-        // Priority 1b — OR the per-gate Debug.Detail flags across all gates
-        // whose Debug.DetailTrigger is active for a lifecycle event.
-        //   which: 0 = Consider (start mask bit), 1 = Cancel
-        void AggregateDetail(int which, bool& show_passing, bool& show_failing) const;
+        // Scan the [Trigger.AIExt] section for "<root>.Debug.<subkey>" keys and
+        // populate GateDebug. Called from LoadFromINIFile.
+        void ParseGateDebug(CCINIClass* pINI, const char* section);
+
+        // Emit per-gate debug (the tool's quad) to the log for a lifecycle
+        // event. Reads GateDebug + the LastCheckReport built by EvaluateAndReport.
+        // label is the bracket tag ("Consider"/"Cancel").
+        void EmitGateDebug(
+            AITriggerTypeClass* pThis, HouseClass* pOwner, HouseClass* pEnemy,
+            const char* label) const;
 
 
         // -----------------------------------------------------------------------
