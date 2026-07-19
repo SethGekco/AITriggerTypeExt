@@ -315,6 +315,10 @@ public:
         Nullable<int> OwnerPowerOutputMax;
         Nullable<int> OwnerTechLevelMin;
         Nullable<int> OwnerTechLevelMax;
+        // Live combat DPS of everything this house currently owns (primary
+        // weapons, raw damage; see ComputeHouseDPS). Priority-2 "DPS Check" v1.
+        Nullable<int> OwnerDPSMin;
+        Nullable<int> OwnerDPSMax;
 
         // -----------------------------------------------------------------------
         // ENEMY — buildings
@@ -342,6 +346,8 @@ public:
         Nullable<int> EnemyPowerOutputMax;
         Nullable<int> EnemyTechLevelMin;
         Nullable<int> EnemyTechLevelMax;
+        Nullable<int> EnemyDPSMin;
+        Nullable<int> EnemyDPSMax;
 
         // -----------------------------------------------------------------------
         // ALLIES — buildings
@@ -692,6 +698,15 @@ public:
             const Nullable<int>& max);
 
         static bool CheckHouseTechLevel(
+            HouseClass* pHouse,
+            const Nullable<int>& min,
+            const Nullable<int>& max);
+
+        // Sum the raw DPS of every combat object the house currently owns
+        // (primary weapon only, damage>0). Cached per-house per-frame.
+        // Raw DPS per object = Damage * Burst / (ROF / 10).
+        static double ComputeHouseDPS(HouseClass* pHouse);
+        static bool CheckHouseDPS(
             HouseClass* pHouse,
             const Nullable<int>& min,
             const Nullable<int>& max);

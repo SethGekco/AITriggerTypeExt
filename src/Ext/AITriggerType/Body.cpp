@@ -13,6 +13,7 @@
 #include <MessageListClass.h>
 #include <StringTable.h>
 #include <RulesClass.h>
+#include <WeaponTypeClass.h>
 
 // ============================================================================
 // Static member definitions
@@ -313,6 +314,8 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     ReadNullableInt(exINI, section, "RequiredOwnerPowerOutputMax",  OwnerPowerOutputMax);
     ReadNullableInt(exINI, section, "RequiredOwnerTechLevelMin",    OwnerTechLevelMin);
     ReadNullableInt(exINI, section, "RequiredOwnerTechLevelMax",    OwnerTechLevelMax);
+    ReadNullableInt(exINI, section, "RequiredOwnerDPSMin",          OwnerDPSMin);
+    ReadNullableInt(exINI, section, "RequiredOwnerDPSMax",          OwnerDPSMax);
 
     // -----------------------------------------------------------------------
     // Enemy
@@ -343,6 +346,8 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     ReadNullableInt(exINI, section, "RequiredEnemyPowerOutputMax",  EnemyPowerOutputMax);
     ReadNullableInt(exINI, section, "RequiredEnemyTechLevelMin",    EnemyTechLevelMin);
     ReadNullableInt(exINI, section, "RequiredEnemyTechLevelMax",    EnemyTechLevelMax);
+    ReadNullableInt(exINI, section, "RequiredEnemyDPSMin",          EnemyDPSMin);
+    ReadNullableInt(exINI, section, "RequiredEnemyDPSMax",          EnemyDPSMax);
 
     // -----------------------------------------------------------------------
     // Allies
@@ -672,6 +677,60 @@ bool AITriggerTypeExt::ExtData::CheckHouseTechLevel(
     return true;
 }
 
+// Sum the raw combat DPS of every object the house currently owns. Primary
+// weapon only, damage>0 (so repair/support weapons are excluded). Cached per
+// house per frame — ConditionMet runs hot and several triggers may query the
+// same house on one frame. Priority-2 "DPS Check" v1: no scope/armor/warhead
+// filters yet.
+double AITriggerTypeExt::ExtData::ComputeHouseDPS(HouseClass* const pHouse)
+{
+    if (!pHouse) return 0.0;
+
+    static std::map<int, std::pair<int, double>> cache; // ArrayIndex -> (frame, dps)
+    int const frame = Unsorted::CurrentFrame;
+    int const idx   = pHouse->ArrayIndex;
+
+    auto const it = cache.find(idx);
+    if (it != cache.end() && it->second.first == frame)
+        return it->second.second;
+
+    double total = 0.0;
+    auto accumulate = [&](TechnoTypeClass* pType)
+    {
+        if (!pType) return;
+        int const count = CountOwnedTechnoType(pHouse, pType);
+        if (count <= 0) return;
+        auto const pWS = pType->GetWeapon(0);
+        if (!pWS || !pWS->WeaponType) return;
+        auto const w = pWS->WeaponType;
+        if (w->ROF <= 0 || w->Damage <= 0) return;
+        int const burst = w->Burst > 0 ? w->Burst : 1;
+        double const dps = static_cast<double>(w->Damage) * burst / (w->ROF / 10.0);
+        total += dps * count;
+    };
+
+    for (auto const p : InfantryTypeClass::Array) accumulate(p);
+    for (auto const p : UnitTypeClass::Array)     accumulate(p);
+    for (auto const p : AircraftTypeClass::Array) accumulate(p);
+    for (auto const p : BuildingTypeClass::Array) accumulate(p);
+
+    cache[idx] = { frame, total };
+    return total;
+}
+
+bool AITriggerTypeExt::ExtData::CheckHouseDPS(
+    HouseClass* const pHouse,
+    const Nullable<int>& min,
+    const Nullable<int>& max)
+{
+    if (!pHouse) return true;
+    if (!min.isset() && !max.isset()) return true; // no DPS gate on this house
+    int const val = static_cast<int>(ComputeHouseDPS(pHouse));
+    if (min.isset() && val < min.Get()) return false;
+    if (max.isset() && max.Get() != -1 && val > max.Get()) return false;
+    return true;
+}
+
 // ============================================================================
 // Sum helpers for Most/Least house selection
 // ============================================================================
@@ -778,6 +837,7 @@ bool AITriggerTypeExt::ExtData::CheckOwner(HouseClass* const pHouse) const
     if (!CheckHousePower(pHouse, OwnerPowerMin, OwnerPowerMax)) return false;
     if (!CheckHousePowerOutput(pHouse, OwnerPowerOutputMin, OwnerPowerOutputMax)) return false;
     if (!CheckHouseTechLevel(pHouse, OwnerTechLevelMin, OwnerTechLevelMax)) return false;
+    if (!CheckHouseDPS(pHouse, OwnerDPSMin, OwnerDPSMax)) return false;
     return true;
 }
 
@@ -799,7 +859,8 @@ bool AITriggerTypeExt::ExtData::CheckEnemy(
         EnemyCreditsMin.isset()    || EnemyCreditsMax.isset()    ||
         EnemyPowerMin.isset()      || EnemyPowerMax.isset()      ||
         EnemyPowerOutputMin.isset()|| EnemyPowerOutputMax.isset()||
-        EnemyTechLevelMin.isset()  || EnemyTechLevelMax.isset();
+        EnemyTechLevelMin.isset()  || EnemyTechLevelMax.isset()  ||
+        EnemyDPSMin.isset()        || EnemyDPSMax.isset();
 
     if (!hasAnyEnemyCheck)
         return true;
@@ -816,6 +877,7 @@ bool AITriggerTypeExt::ExtData::CheckEnemy(
         if (!CheckHousePower(pH, EnemyPowerMin, EnemyPowerMax)) return false;
         if (!CheckHousePowerOutput(pH, EnemyPowerOutputMin, EnemyPowerOutputMax)) return false;
         if (!CheckHouseTechLevel(pH, EnemyTechLevelMin, EnemyTechLevelMax)) return false;
+        if (!CheckHouseDPS(pH, EnemyDPSMin, EnemyDPSMax)) return false;
         return true;
     };
 
@@ -1044,6 +1106,8 @@ void AITriggerTypeExt::ExtData::Serialize(T& Stm)
         .Process(this->OwnerPowerOutputMax)
         .Process(this->OwnerTechLevelMin)
         .Process(this->OwnerTechLevelMax)
+        .Process(this->OwnerDPSMin)
+        .Process(this->OwnerDPSMax)
         ;
 
     SerializeGate(Stm, this->EnemyBuildings);
@@ -1059,6 +1123,8 @@ void AITriggerTypeExt::ExtData::Serialize(T& Stm)
         .Process(this->EnemyPowerOutputMax)
         .Process(this->EnemyTechLevelMin)
         .Process(this->EnemyTechLevelMax)
+        .Process(this->EnemyDPSMin)
+        .Process(this->EnemyDPSMax)
         ;
 
     SerializeGate(Stm, this->AlliesBuildings);
