@@ -12,6 +12,7 @@
 #include <Utilities/Debug.h>
 #include <MessageListClass.h>
 #include <StringTable.h>
+#include <RulesClass.h>
 
 // ============================================================================
 // Static member definitions
@@ -423,6 +424,10 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     // (<root>.Debug.MessageDisplay/ValueDisplay/LogMessage/LogWrite/
     //  DetailsDisplay/DetailsTypes). Scanned generically from section keys.
     ParseGateDebug(pINI, section);
+
+    // Per-trigger weight delta overrides (Priority 6)
+    ReadNullableInt(exINI, section, "SuccessWeightDelta", SuccessWeightDelta);
+    ReadNullableInt(exINI, section, "FailureWeightDelta", FailureWeightDelta);
 
     // Weight cascades (Priority 6)
     ReadStringList(exINI, section, "SuccessCascadeTargets",       SuccessCascadeTargets);
@@ -1090,6 +1095,17 @@ void AITriggerTypeExt::ExtData::Serialize(T& Stm)
         .Process(this->ElapsedTimeMin)
         .Process(this->ElapsedTimeMax)
         ;
+
+    // Weight adjustment (Priority 6) — behaviour-critical, so persist across
+    // save/load (unlike the debug-only strings, which re-read from INI).
+    Stm
+        .Process(this->SuccessWeightDelta)
+        .Process(this->FailureWeightDelta)
+        .Process(this->SuccessCascadeTargets)
+        .Process(this->SuccessCascadeDeltas)
+        .Process(this->FailureCascadeTargets)
+        .Process(this->FailureCascadeDeltas)
+        ;
 }
 
 void AITriggerTypeExt::ExtData::LoadFromStream(PhobosStreamReader& Stm)
@@ -1313,6 +1329,34 @@ void AITriggerTypeExt::EmitDebugReject(
     if (!pExt || !pThis) return;
     EmitLifecycle("Reject", pThis,
         pExt->DebugMessageDisplay_Reject, pExt->DebugLog_Reject);
+}
+
+// Replace vanilla's global weight delta for THIS trigger. Runs at the hook
+// entry, BEFORE vanilla's own adjustment: we pre-apply (override - global), so
+// after vanilla adds the global delta back the net effect is exactly `override`
+// — while vanilla still applies its track-record scaling and [Min,Max] clamp.
+void AITriggerTypeExt::ApplyWeightSelfDelta(
+    ExtData* pExt, AITriggerTypeClass* pThis, bool success)
+{
+    if (!pExt || !pThis) return;
+
+    auto const& ov = success ? pExt->SuccessWeightDelta : pExt->FailureWeightDelta;
+    if (!ov.isset()) return;
+
+    auto const pRules = RulesClass::Instance;
+    if (!pRules) return;
+
+    double const globalDelta = success
+        ? pRules->AITriggerSuccessWeightDelta
+        : pRules->AITriggerFailureWeightDelta;
+    double const myDelta = static_cast<double>(ov.Get());
+
+    pThis->Weight_Current += (myDelta - globalDelta);
+
+    auto const mode = GetDebugMode();
+    if (mode == DebugDisplayMode::Log || mode == DebugDisplayMode::Both)
+        Debug::Log("[AIExt WeightDelta] %s %s: override %+d (vanilla global %+.0f)\n",
+            success ? "Success" : "Failure", pThis->ID, ov.Get(), globalDelta);
 }
 
 // Adjust the Weight_Current of each cascade target when THIS trigger's team

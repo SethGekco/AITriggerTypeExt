@@ -434,6 +434,17 @@ public:
         std::map<std::string, AIExtGateDebug> GateDebug;
 
         // -----------------------------------------------------------------------
+        // PER-TRIGGER WEIGHT DELTA (Priority 6) — replace vanilla's global
+        // AITriggerSuccessWeightDelta / AITriggerFailureWeightDelta for THIS
+        // trigger only. Omit = use the global default. The track-record scaling
+        // and [Min,Max] clamp still apply (handled by vanilla).
+        //   SuccessWeightDelta=30      ; this trigger gains 30 on success (not global 5)
+        //   FailureWeightDelta=-40     ; loses 40 on failure (not global -20)
+        // -----------------------------------------------------------------------
+        Nullable<int> SuccessWeightDelta;
+        Nullable<int> FailureWeightDelta;
+
+        // -----------------------------------------------------------------------
         // WEIGHT CASCADES (Priority 6) — when THIS trigger's team succeeds or
         // fails, adjust the Weight_Current of OTHER named triggers. Lets modders
         // encode "if this aerial rush failed, penalize the other aerial rushes".
@@ -739,7 +750,10 @@ public:
     static void EmitDebugDeleted(ExtData* pExt, AITriggerTypeClass* pThis);
     static void EmitDebugReject(ExtData* pExt, AITriggerTypeClass* pThis);
 
-    // Weight cascades — called from the RegisterSuccess (success=true) /
-    // RegisterFailure (success=false) hooks. Adjusts other triggers' weights.
+    // Weight adjustments — called from the RegisterSuccess (success=true) /
+    // RegisterFailure (success=false) hooks, BEFORE vanilla runs.
+    // Self-delta replaces vanilla's global delta for this trigger; cascades
+    // adjust other named triggers' weights.
+    static void ApplyWeightSelfDelta(ExtData* pExt, AITriggerTypeClass* pThis, bool success);
     static void ApplyWeightCascades(ExtData* pExt, AITriggerTypeClass* pThis, bool success);
 };

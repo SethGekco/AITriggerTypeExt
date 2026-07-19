@@ -309,6 +309,7 @@ DEFINE_HOOK(0x41FD60, AITriggerTypeClass_RegisterSuccess_Deleted, 0xD)
     if (pExt)
     {
         AITriggerTypeExt::EmitDebugDeleted(pExt, pThis);
+        AITriggerTypeExt::ApplyWeightSelfDelta(pExt, pThis, true);
         AITriggerTypeExt::ApplyWeightCascades(pExt, pThis, true);
     }
 
@@ -333,6 +334,7 @@ DEFINE_HOOK(0x41FE20, AITriggerTypeClass_RegisterFailure_Destroyed, 0x8)
     if (pExt)
     {
         AITriggerTypeExt::EmitDebugDestroyed(pExt, pThis);
+        AITriggerTypeExt::ApplyWeightSelfDelta(pExt, pThis, false);
         AITriggerTypeExt::ApplyWeightCascades(pExt, pThis, false);
     }
 
