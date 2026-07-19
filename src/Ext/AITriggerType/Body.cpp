@@ -49,6 +49,31 @@ static void ReadIntList(
     }
 }
 
+// Read a comma-separated list of raw strings (trimmed) into out.
+static void ReadStringList(
+    INI_EX& exINI,
+    const char* pSection,
+    const char* pKey,
+    std::vector<std::string>& out)
+{
+    if (exINI.ReadString(pSection, pKey))
+    {
+        out.clear();
+        char* raw = exINI.value();
+        char* ctx = nullptr;
+        for (char* tok = strtok_s(raw, ",", &ctx);
+             tok;
+             tok = strtok_s(nullptr, ",", &ctx))
+        {
+            while (*tok == ' ' || *tok == '\t') ++tok;
+            char* end = tok + strlen(tok);
+            while (end > tok && (end[-1] == ' ' || end[-1] == '\t')) *(--end) = 0;
+            if (*tok)
+                out.emplace_back(tok);
+        }
+    }
+}
+
 // Read a list of TechnoTypeClass* (looks up infantry, vehicle, aircraft in order)
 static void ReadTechnoTypeList(
     INI_EX& exINI,
@@ -398,6 +423,12 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     // (<root>.Debug.MessageDisplay/ValueDisplay/LogMessage/LogWrite/
     //  DetailsDisplay/DetailsTypes). Scanned generically from section keys.
     ParseGateDebug(pINI, section);
+
+    // Weight cascades (Priority 6)
+    ReadStringList(exINI, section, "SuccessCascadeTargets",       SuccessCascadeTargets);
+    ReadIntList   (exINI, section, "SuccessCascadeTargets.Delta", SuccessCascadeDeltas, 0);
+    ReadStringList(exINI, section, "FailureCascadeTargets",       FailureCascadeTargets);
+    ReadIntList   (exINI, section, "FailureCascadeTargets.Delta", FailureCascadeDeltas, 0);
 
     // -----------------------------------------------------------------------
     // Debug — raw log strings
@@ -1282,6 +1313,48 @@ void AITriggerTypeExt::EmitDebugReject(
     if (!pExt || !pThis) return;
     EmitLifecycle("Reject", pThis,
         pExt->DebugMessageDisplay_Reject, pExt->DebugLog_Reject);
+}
+
+// Adjust the Weight_Current of each cascade target when THIS trigger's team
+// succeeded (success=true) or failed. Clamped to each target's own
+// [Weight_Minimum, Weight_Maximum] — the same bounds vanilla uses. The weight
+// change always applies; only the log line is gated behind debug mode.
+void AITriggerTypeExt::ApplyWeightCascades(
+    ExtData* pExt, AITriggerTypeClass* pThis, bool success)
+{
+    if (!pExt || !pThis) return;
+
+    auto const& targets = success ? pExt->SuccessCascadeTargets : pExt->FailureCascadeTargets;
+    auto const& deltas  = success ? pExt->SuccessCascadeDeltas  : pExt->FailureCascadeDeltas;
+    if (targets.empty())
+        return;
+
+    auto const mode = GetDebugMode();
+    bool const logOn = (mode == DebugDisplayMode::Log || mode == DebugDisplayMode::Both);
+    const char* kind = success ? "Success" : "Failure";
+
+    for (size_t i = 0; i < targets.size(); ++i)
+    {
+        // Positional delta; a single value applies to all, missing entries reuse the last.
+        int delta = deltas.empty() ? 0
+                  : deltas[i < deltas.size() ? i : deltas.size() - 1];
+        if (delta == 0)
+            continue;
+
+        auto pTarget = AITriggerTypeClass::Find(targets[i].c_str());
+        if (!pTarget || pTarget == pThis)
+            continue;
+
+        double before = pTarget->Weight_Current;
+        double after  = before + delta;
+        if (after < pTarget->Weight_Minimum) after = pTarget->Weight_Minimum;
+        if (after > pTarget->Weight_Maximum) after = pTarget->Weight_Maximum;
+        pTarget->Weight_Current = after;
+
+        if (logOn)
+            Debug::Log("[AIExt Cascade] %s %s -> %s delta %+d weight %.1f -> %.1f\n",
+                kind, pThis->ID, pTarget->ID, delta, before, after);
+    }
 }
 
 // ============================================================================

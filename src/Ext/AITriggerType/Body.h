@@ -433,6 +433,22 @@ public:
         // [Trigger.AIExt] section for "<root>.Debug.<subkey>" keys.
         std::map<std::string, AIExtGateDebug> GateDebug;
 
+        // -----------------------------------------------------------------------
+        // WEIGHT CASCADES (Priority 6) — when THIS trigger's team succeeds or
+        // fails, adjust the Weight_Current of OTHER named triggers. Lets modders
+        // encode "if this aerial rush failed, penalize the other aerial rushes".
+        //   SuccessCascadeTargets=TrigA,TrigB
+        //   SuccessCascadeTargets.Delta=10,5   ; positional; single value = all
+        //   FailureCascadeTargets=TrigC
+        //   FailureCascadeTargets.Delta=-15
+        // Target weights are clamped to each target's [Weight_Minimum, Maximum],
+        // the same bounds vanilla RegisterSuccess/Failure use.
+        // -----------------------------------------------------------------------
+        std::vector<std::string> SuccessCascadeTargets;
+        std::vector<int>         SuccessCascadeDeltas;
+        std::vector<std::string> FailureCascadeTargets;
+        std::vector<int>         FailureCascadeDeltas;
+
         // mutable check report populated by EvaluateAndReport()
         // Reset at the start of each evaluation; consumed by EmitDebug* functions.
         mutable AIExtCheckDetail LastCheckReport;
@@ -722,4 +738,8 @@ public:
     static void EmitDebugDestroyed(ExtData* pExt, AITriggerTypeClass* pThis);
     static void EmitDebugDeleted(ExtData* pExt, AITriggerTypeClass* pThis);
     static void EmitDebugReject(ExtData* pExt, AITriggerTypeClass* pThis);
+
+    // Weight cascades — called from the RegisterSuccess (success=true) /
+    // RegisterFailure (success=false) hooks. Adjusts other triggers' weights.
+    static void ApplyWeightCascades(ExtData* pExt, AITriggerTypeClass* pThis, bool success);
 };

@@ -307,7 +307,10 @@ DEFINE_HOOK(0x41FD60, AITriggerTypeClass_RegisterSuccess_Deleted, 0xD)
 
     auto const pExt = AITriggerTypeExt::ExtMap.Find(pThis);
     if (pExt)
+    {
         AITriggerTypeExt::EmitDebugDeleted(pExt, pThis);
+        AITriggerTypeExt::ApplyWeightCascades(pExt, pThis, true);
+    }
 
     return 0;
 }
@@ -328,7 +331,10 @@ DEFINE_HOOK(0x41FE20, AITriggerTypeClass_RegisterFailure_Destroyed, 0x8)
 
     auto const pExt = AITriggerTypeExt::ExtMap.Find(pThis);
     if (pExt)
+    {
         AITriggerTypeExt::EmitDebugDestroyed(pExt, pThis);
+        AITriggerTypeExt::ApplyWeightCascades(pExt, pThis, false);
+    }
 
     return 0;
 }
