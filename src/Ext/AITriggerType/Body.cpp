@@ -1626,6 +1626,10 @@ void AITriggerTypeExt::ExtData::EvaluateAndReport(HouseClass* pOwner, HouseClass
         BuildScalarDetail("RequiredOwnerPower", net,
             OwnerPowerMin, OwnerPowerMax, LastCheckReport);
     }
+    if (OwnerDPSMin.isset() || OwnerDPSMax.isset())
+        BuildScalarDetail("RequiredOwnerDPS",
+            static_cast<int>(ComputeHouseDPS(pOwner)),
+            OwnerDPSMin, OwnerDPSMax, LastCheckReport);
 
     // ─── Enemy scope ────────────────────────────────────────────────────
     if (pEnemy)
@@ -1645,6 +1649,10 @@ void AITriggerTypeExt::ExtData::EvaluateAndReport(HouseClass* pOwner, HouseClass
             BuildScalarDetail("RequiredEnemyPower", net,
                 EnemyPowerMin, EnemyPowerMax, LastCheckReport);
         }
+        if (EnemyDPSMin.isset() || EnemyDPSMax.isset())
+            BuildScalarDetail("RequiredEnemyDPS",
+                static_cast<int>(ComputeHouseDPS(pEnemy)),
+                EnemyDPSMin, EnemyDPSMax, LastCheckReport);
     }
 
     // ─── ElapsedTime (game-scope, no house needed) ──────────────────────
