@@ -137,6 +137,19 @@ RequiredOwnerPowerOutputMax=-1  ; no upper cap
 
 RequiredOwnerTechLevelMin=3     ; TechLevel >= 3
 RequiredOwnerTechLevelMax=-1    ; no upper cap
+
+RequiredOwnerDPSMin=0           ; live combat DPS of everything owned >= 0
+RequiredOwnerDPSMax=-1          ; no upper cap (-1 = uncapped)
+```
+
+**DPS** = sum over every owned Infantry/Unit/Aircraft/Building of
+`count * (Damage * Burst / (ROF / 10))` using each type's **primary weapon**,
+counting only weapons with positive damage (repair/support weapons excluded).
+It's a raw, unit-agnostic firepower measure (no armor or warhead weighting in
+v1). Computed live and cached per house per frame. Enemy variant exists too —
+e.g. "only commit a rush while the enemy's total firepower is low":
+```ini
+RequiredEnemyDPSMax=400         ; enemy's summed DPS must be <= 400
 ```
 
 **Power field sign convention:**
@@ -369,3 +382,99 @@ This trigger will only enter the eligible pool when:
 | 20 minutes | 18000           |
 
 All values assume normal game speed (15 logical frames per second).
+
+---
+
+## Debug / observability system
+
+Global toggle in **rulesmd.ini** (not the trigger section):
+```ini
+[Debug]
+DisplayAIWaveMessages=both   ; off (default) | yes/overlay | log | both
+```
+`overlay` = in-game HUD messages only, `log` = debug.log only, `both` = both.
+
+### Trigger lifecycle events
+
+Each fires once at a distinct point in a trigger/team's life. Overlay uses a
+CSF key or `NOSTR:literal text`; the log variant is raw text.
+
+| Event | Fires when | Hook |
+|---|---|---|
+| `Consider` | passed all AIExt gates, entering the weighted draw | ConditionMet epilogue |
+| `Cancel` | vetoed by an AIExt gate | ConditionMet epilogue |
+| `Reject` | passed gates but LOST the weighted draw | FindEligibleAITeams |
+| `Start` | won the draw; team is being dispatched | FindEligibleAITeams |
+| `Destroyed` | team wiped out before finishing its script (failure) | RegisterFailure |
+| `Deleted` | team completed its script successfully | RegisterSuccess |
+
+```ini
+[MyTrigger.AIExt]
+DebugMessageDisplay.Consider=NOSTR:considering rush   ; HUD (spammy — opt-in)
+DebugMessageDisplay.Cancel=STT:AI_RUSH_CANCELLED
+DebugMessageDisplay.Reject=NOSTR:rush lost the draw
+DebugMessageDisplay.Start=NOSTR:rush dispatched
+DebugMessageDisplay.Destroyed=NOSTR:rush wiped out
+DebugMessageDisplay.Deleted=NOSTR:rush succeeded
+DebugLog.Consider=...    ; log-text variants (DebugLog.Cancel/Reject/Start/...)
+```
+Notes: `Consider`/`Reject` fire very frequently (per evaluation / per losing
+trigger per selection) — prefer the log variant and tag only specific triggers.
+`Finish` exists as a tag name but is currently a no-op (no hook).
+
+### Per-gate detail
+
+Any gate root (e.g. `RequiredOwnerBuildings`, `RequiredEnemyDPS`,
+`RequiredOwnerCredits`) can carry a debug "quad" that reports its actual value
+and pass/fail on `Consider`/`Cancel`:
+
+```ini
+RequiredEnemyBuildings.Debug.MessageDisplay=NOSTR:enemy defenses:  ; HUD prefix
+RequiredEnemyBuildings.Debug.ValueDisplay=yes    ; append the value (HUD, on veto)
+RequiredEnemyBuildings.Debug.LogMessage=enemy defenses:            ; log header
+RequiredEnemyBuildings.Debug.LogWrite=yes        ; write PASS/FAIL lines to log
+RequiredEnemyBuildings.Debug.DetailsDisplay=yes  ; include per-entry breakdown
+RequiredEnemyBuildings.Debug.DetailsTypes=Type, Minimum, Maximum, Current
+```
+Log output example (on a veto):
+```
+[AIExt Cancel] MyTrigger   FAIL RequiredEnemyBuildings NAPILL cur=3 min=0 max=0
+```
+Per-gate HUD `MessageDisplay` shows **only on Cancel, only for the failing
+gate** (Consider would flood the screen). `DetailsTypes` picks which columns
+appear (`Type`, `Minimum`, `Maximum`, `Current`).
+
+---
+
+## Weight adjustment system
+
+Controls how a trigger's selection weight changes after its team succeeds or
+fails. Extends vanilla's global `AITriggerSuccessWeightDelta` /
+`AITriggerFailureWeightDelta`. Persisted across save/load.
+
+### Per-trigger delta override
+
+Replace the global delta for **this** trigger only (track-record scaling and
+the `[Weight_Minimum, Weight_Maximum]` clamp still apply):
+```ini
+[MyTrigger.AIExt]
+SuccessWeightDelta=30     ; +30 on success instead of the global default
+FailureWeightDelta=-40    ; -40 on failure instead of the global default
+```
+
+### Cross-trigger cascades
+
+When this trigger's team succeeds/fails, also nudge OTHER named triggers'
+weights — e.g. "if this aerial rush failed, penalize the other aerial rushes":
+```ini
+[MyAerialRush.AIExt]
+FailureCascadeTargets=OtherAerialRush1,OtherAerialRush2
+FailureCascadeTargets.Delta=-15        ; positional; single value = all targets
+SuccessCascadeTargets=RelatedGroundPush
+SuccessCascadeTargets.Delta=10
+```
+Target weights are clamped to each target's own `[Weight_Minimum,
+Weight_Maximum]`. With debug logging on, each adjustment logs:
+```
+[AIExt Cascade] Failure MyAerialRush -> OtherAerialRush1 delta -15 weight 80.0 -> 65.0
+```
