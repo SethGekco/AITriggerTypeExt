@@ -143,14 +143,20 @@ RequiredOwnerDPSMax=-1          ; no upper cap (-1 = uncapped)
 ```
 
 **DPS** = sum over every owned Infantry/Unit/Aircraft/Building of
-`count * (Damage * Burst / (ROF / 10))` using each type's **primary weapon**,
-counting only weapons with positive damage (repair/support weapons excluded).
-It's a raw, unit-agnostic firepower measure (no armor or warhead weighting in
-v1). Computed live and cached per house per frame. Enemy variant exists too —
-e.g. "only commit a rush while the enemy's total firepower is low":
+`count * (Damage * Burst / (ROF / 10))` across weapons 0 and 1, counting only
+weapons with positive damage (repair/support weapons excluded). Raw firepower
+(no armor/warhead weighting yet). Computed live, cached per house per scope per
+frame. Enemy variant exists too — e.g. "only commit a rush while the enemy's
+firepower is low":
 ```ini
 RequiredEnemyDPSMax=400         ; enemy's summed DPS must be <= 400
+RequiredEnemyDPSLock=AG         ; ...counting only ANTI-GROUND weapons
 ```
+**`Lock`** scope filter (`RequiredOwnerDPSLock` / `RequiredEnemyDPSLock`):
+`AA` = count only weapons that can hit air, `AG` = only weapons that can hit
+ground (by the projectile's `AA`/`AG` flags), `AA,AG` or omit = all. So
+`RequiredEnemyDPSLock=AG` measures the enemy's anti-ground firepower — the
+number that matters before a ground rush.
 
 **Power field sign convention:**
 - Positive = surplus (e.g. `100` means at least 100 units of surplus)
