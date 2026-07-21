@@ -394,6 +394,9 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     ReadNullableInt(exINI, section, "RequiredDPSRatioMin",          DPSRatioMin);
     ReadNullableInt(exINI, section, "RequiredDPSRatioMax",          DPSRatioMax);
     ReadDPSLock    (exINI, section, "RequiredDPSRatioLock",         DPSRatioLock);
+    ReadNullableInt(exINI, section, "RequiredTeamRangeRatioMin",    TeamRangeRatioMin);
+    ReadNullableInt(exINI, section, "RequiredTeamRangeRatioMax",    TeamRangeRatioMax);
+    ReadDPSLock    (exINI, section, "RequiredTeamRangeRatioLock",   TeamRangeRatioLock);
 
     // -----------------------------------------------------------------------
     // Allies
@@ -1209,8 +1212,71 @@ bool AITriggerTypeExt::ExtData::ExtraPrerequisitesMet(
     if (!CheckOwner(pCallingHouse))               return false;
     if (!CheckEnemy(pCallingHouse, pTargetHouse)) return false;
     if (!CheckDPSRatio(pCallingHouse, pTargetHouse)) return false;
+    if (!CheckTeamRangeRatio(pCallingHouse, pTargetHouse)) return false;
     if (!CheckAllies(pCallingHouse))              return false;
     if (!CheckNeutral())                          return false;
+    return true;
+}
+
+// Longest weapon range (cells) among the trigger's own Team1/Team2 taskforce
+// unit types. Reads AITriggerType->Team[N]->TaskForce->Entries[i].Type.
+int AITriggerTypeExt::ExtData::ComputeTriggerTeamMaxRange(
+    AITriggerTypeClass* const pTrigger, int const lockMask)
+{
+    if (!pTrigger) return 0;
+    int maxRange = 0;
+
+    auto scanTeam = [&](TeamTypeClass* pTeam)
+    {
+        if (!pTeam || !pTeam->TaskForce) return;
+        auto const tf = pTeam->TaskForce;
+        int const n = tf->CountEntries < 6 ? tf->CountEntries : 6;
+        for (int i = 0; i < n; ++i)
+        {
+            auto const pType = tf->Entries[i].Type;
+            if (!pType) continue;
+            for (int wi = 0; wi < 2; ++wi)
+            {
+                auto const pWS = pType->GetWeapon(wi);
+                if (!pWS || !pWS->WeaponType) continue;
+                auto const w = pWS->WeaponType;
+                if (w->Damage <= 0) continue;
+                if (lockMask != 0)
+                {
+                    auto const proj = w->Projectile;
+                    bool const matchAA = (lockMask & 1) && proj && proj->AA;
+                    bool const matchAG = (lockMask & 2) && proj && proj->AG;
+                    if (!matchAA && !matchAG) continue;
+                }
+                int const cells = w->Range / 256;
+                if (cells > maxRange) maxRange = cells;
+            }
+        }
+    };
+
+    scanTeam(pTrigger->Team1);
+    scanTeam(pTrigger->Team2);
+    return maxRange;
+}
+
+// Veto if this trigger's own team is outranged by the enemy. Team range as a
+// percentage of enemy range; cross-multiplied for a zero-range enemy (Min then
+// passes: the enemy has no ranged threat).
+bool AITriggerTypeExt::ExtData::CheckTeamRangeRatio(
+    HouseClass* const pCallingHouse, HouseClass* const pTargetHouse) const
+{
+    if (!TeamRangeRatioMin.isset() && !TeamRangeRatioMax.isset()) return true;
+
+    int const teamRange = ComputeTriggerTeamMaxRange(this->OwnerObject(), TeamRangeRatioLock);
+    auto const pEnemy = ResolveTargetHouse(pCallingHouse, pTargetHouse);
+    int const enemyRange = pEnemy
+        ? ComputeHouseMaxRange(pEnemy, TeamRangeRatioLock, nullptr) : 0;
+
+    if (TeamRangeRatioMin.isset() && teamRange * 100 < TeamRangeRatioMin.Get() * enemyRange)
+        return false;
+    if (TeamRangeRatioMax.isset() && TeamRangeRatioMax.Get() != -1
+        && teamRange * 100 > TeamRangeRatioMax.Get() * enemyRange)
+        return false;
     return true;
 }
 
@@ -1313,6 +1379,9 @@ void AITriggerTypeExt::ExtData::Serialize(T& Stm)
         .Process(this->DPSRatioMin)
         .Process(this->DPSRatioMax)
         .Process(this->DPSRatioLock)
+        .Process(this->TeamRangeRatioMin)
+        .Process(this->TeamRangeRatioMax)
+        .Process(this->TeamRangeRatioLock)
         ;
 
     SerializeGate(Stm, this->AlliesBuildings);
@@ -1871,6 +1940,16 @@ void AITriggerTypeExt::ExtData::EvaluateAndReport(HouseClass* pOwner, HouseClass
         int const ratioPct = (e > 0.0) ? static_cast<int>(o * 100.0 / e) : 999999;
         BuildScalarDetail("RequiredDPSRatio", ratioPct,
             DPSRatioMin, DPSRatioMax, LastCheckReport);
+    }
+
+    // ─── Team-vs-enemy range ratio (percentage; 100 = matched) ──────────
+    if (TeamRangeRatioMin.isset() || TeamRangeRatioMax.isset())
+    {
+        int const tr = ComputeTriggerTeamMaxRange(this->OwnerObject(), TeamRangeRatioLock);
+        int const er = pEnemy ? ComputeHouseMaxRange(pEnemy, TeamRangeRatioLock, nullptr) : 0;
+        int const ratioPct = (er > 0) ? (tr * 100 / er) : 999999;
+        BuildScalarDetail("RequiredTeamRangeRatio", ratioPct,
+            TeamRangeRatioMin, TeamRangeRatioMax, LastCheckReport);
     }
 
     // ─── Deferred to follow-up ships ────────────────────────────────────

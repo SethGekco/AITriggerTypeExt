@@ -371,6 +371,16 @@ public:
         int           EnemyMaxRangeLock = 0;
         std::vector<TechnoTypeClass*> EnemyMaxRangeTypes;
 
+        // "Outranged?" check — THIS trigger's own team (Team1/Team2 taskforce)
+        // longest weapon range as a percentage of the enemy's longest
+        // (100 = matched, <100 = my team is outranged, 150 = I outrange 1.5x).
+        // Reads the trigger's taskforce, so it's team-accurate (a Dog team and
+        // a Prism team in the same house get different answers).
+        // RequiredTeamRangeRatioMin=100  → don't dispatch if my team is outranged.
+        Nullable<int> TeamRangeRatioMin;
+        Nullable<int> TeamRangeRatioMax;
+        int           TeamRangeRatioLock = 0;
+
         // Comparative DPS: owner's DPS as a ratio of the (resolved) enemy's,
         // expressed as a percentage (200 = owner has 2.0x the enemy's DPS).
         // "Attack only when I out-gun them." -1 max = uncapped. Uses the shared
@@ -698,6 +708,7 @@ public:
         bool CheckOwner (HouseClass* pHouse) const;
         bool CheckEnemy (HouseClass* pCallingHouse, HouseClass* pTargetHouse) const;
         bool CheckDPSRatio(HouseClass* pCallingHouse, HouseClass* pTargetHouse) const;
+        bool CheckTeamRangeRatio(HouseClass* pCallingHouse, HouseClass* pTargetHouse) const;
         bool CheckAllies(HouseClass* pCallingHouse) const;
         bool CheckNeutral() const;
         bool CheckElapsedTime() const;
@@ -767,6 +778,10 @@ public:
             const Nullable<int>& max,
             int lockMask,
             const std::vector<TechnoTypeClass*>* types);
+
+        // Longest weapon range (cells) among the trigger's own Team1/Team2
+        // taskforce unit types, scoped by lockMask.
+        static int ComputeTriggerTeamMaxRange(AITriggerTypeClass* pTrigger, int lockMask);
 
         // Count total of a TechnoType across all class arrays
         static int CountOwnedTechnoType(
