@@ -57,6 +57,7 @@
 #include "Body.h"
 
 #include <HouseClass.h>
+#include <TeamClass.h>
 #include <Utilities/Macro.h>
 #include <Utilities/Debug.h>
 
@@ -232,27 +233,24 @@ DEFINE_HOOK(0x41E720, AITriggerTypeClass_ConditionMet_Diag, 0x6)
 // ============================================================================
 
 // ----------------------------------------------------------------------------
-// START + REJECT — 0x6F0D26, size 6  ✅ CONFIRMED (registers + stack verified)
+// WINNER STASH + REJECT — 0x6F0D26, size 6  ✅ CONFIRMED (registers + stack)
 //
 // Inside HouseClass::FindEligibleAITeams (FUN_006F0AB0). The function builds a
 // weighted distribution of every trigger that passed ConditionMet, then draws
 // a winner. At 0x6F0D1B the winner is picked (MOV EDI,[EBX+ECX*8]); the
-// TEST/JE at 0x6F0D1E/0x6F0D20 guarantees EDI != null by 0x6F0D26. Here the
-// engine reads the winner's Team1 (MOV ESI,[EDI+0xDC]) to dispatch it.
+// TEST/JE at 0x6F0D1E/0x6F0D20 guarantees EDI != null by 0x6F0D26.
 //   EDI        = winning AITriggerTypeClass*
 //   [ESP+0x48] = distribution array base   (engine reads it at 0x6F0D01)
 //   [ESP+0x54] = distribution entry count  (engine reads it at 0x6F0CF5)
 // Distribution entries are 8 bytes: { AITriggerTypeClass* @ +0, int weight @ +4 }.
 //
-// This is the earliest point the winning trigger is known — the downstream
-// CreateTeam loop (~0x4F8AB2) no longer has the trigger, only its TeamTypes.
-//   Start  fires once for the winner ("won the draw, dispatching team").
-//   Reject fires for every OTHER distribution entry (passed ConditionMet but
-//          lost the weighted draw). Reading the same slots the engine's own
-//          selection loop uses keeps this safe.
-//
-// Stolen: MOV ESI,[EDI+0xDC] (8B B7 DC 00 00 00) = 6 bytes, re-emitted by
-// Syringe so ESI is still loaded for the original code.
+// Winning the weighted draw does NOT mean a team is actually built (team caps,
+// an instance of the TeamType already existing, production gating). So instead
+// of firing Start here, we STASH the winner and fire Start only when a real
+// team is created (the CreateTeam-return hook at 0x4F8AB2, below). This keeps
+// Start honest — it lines up with the eventual Destroyed/Deleted.
+//   Reject still fires here for every trigger that passed ConditionMet but lost
+//   the draw (those never reach team creation, so the draw IS the right point).
 // ----------------------------------------------------------------------------
 
 struct AITriggerDistEntry
@@ -261,13 +259,16 @@ struct AITriggerDistEntry
     int                 Weight;
 };
 
+// Set at the weighted-draw winner (0x6F0D26); consumed at the CreateTeam-return
+// hook (0x4F8AB2), which always runs immediately after within the same AI pass.
+static AITriggerTypeClass* g_PendingStartTrigger = nullptr;
+
 DEFINE_HOOK(0x6F0D26, HouseClass_FindEligibleAITeams_Start, 0x6)
 {
     GET(AITriggerTypeClass*, pWinner, EDI);
 
-    // Start — the winning trigger
-    if (auto const pWinExt = AITriggerTypeExt::ExtMap.Find(pWinner))
-        AITriggerTypeExt::EmitDebugStart(pWinExt, pWinner);
+    // Stash the winner for the CreateTeam-return Start hook.
+    g_PendingStartTrigger = pWinner;
 
     // Reject — every other trigger in the weighted distribution lost the draw.
     // Skip the whole walk when debug output is off (shipping default) so we
@@ -287,6 +288,33 @@ DEFINE_HOOK(0x6F0D26, HouseClass_FindEligibleAITeams_Start, 0x6)
                 AITriggerTypeExt::EmitDebugReject(pExt, pT);
         }
     }
+
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+// START (real team creation) — 0x4F8AB2, size 5  ✅ CONFIRMED
+//
+// The AI-trigger caller of TeamTypeClass::CreateTeam. At 0x4F8AAD the engine
+// calls CreateTeam for a dispatched TeamType; 0x4F8AB2 is the return site,
+// where EAX = the new TeamClass* (or null if creation was skipped/capped).
+// The next instruction (MOV EAX,[ESP+0x34]) reloads the loop counter, so we
+// must read EAX in the hook before it's clobbered.
+//   EAX = new TeamClass* (may be null)
+// We attribute it to g_PendingStartTrigger — the trigger that won the draw in
+// the FindEligibleAITeams pass that fed this exact CreateTeam loop. Firing here
+// (only on a non-null team) means Start counts real teams, not draw wins.
+//
+// Stolen: MOV EAX,[ESP+0x34] (4) + INC EDI (1) = 5 bytes, re-emitted by Syringe.
+// ----------------------------------------------------------------------------
+
+DEFINE_HOOK(0x4F8AB2, TeamTypeClass_CreateTeam_Start, 0x5)
+{
+    GET(TeamClass*, pTeam, EAX);
+
+    if (pTeam && g_PendingStartTrigger)
+        if (auto const pExt = AITriggerTypeExt::ExtMap.Find(g_PendingStartTrigger))
+            AITriggerTypeExt::EmitDebugStart(pExt, g_PendingStartTrigger);
 
     return 0;
 }
