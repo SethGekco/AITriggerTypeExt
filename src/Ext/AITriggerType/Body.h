@@ -324,6 +324,10 @@ public:
         // Restrict the DPS sum to these unit types only (empty = all units).
         // RequiredOwnerDPSTypes=HTNK,MTNK  → "owner tank DPS"
         std::vector<TechnoTypeClass*> OwnerDPSTypes;
+        // Weight each weapon by its warhead's Verses vs this armor type
+        // (effective DPS vs that armor). -1 = raw (no weighting).
+        // RequiredOwnerDPSArmor=heavy
+        int OwnerDPSArmor = -1;
 
         // -----------------------------------------------------------------------
         // ENEMY — buildings
@@ -355,6 +359,7 @@ public:
         Nullable<int> EnemyDPSMax;
         int           EnemyDPSLock = 0;
         std::vector<TechnoTypeClass*> EnemyDPSTypes;
+        int           EnemyDPSArmor = -1;
 
         // -----------------------------------------------------------------------
         // ALLIES — buildings
@@ -721,14 +726,17 @@ public:
         // 0=all. `types` (if non-null and non-empty) restricts to those unit
         // types. Raw DPS per weapon = Damage * Burst / (ROF / 10).
         // The unfiltered case is cached per-house-per-scope per-frame.
+        //   armorIndex (0-10, -1 = raw) multiplies each weapon's DPS by its
+        //   warhead's Verses vs that armor (effective DPS vs the armor).
         static double ComputeHouseDPS(HouseClass* pHouse, int lockMask,
-            const std::vector<TechnoTypeClass*>* types);
+            const std::vector<TechnoTypeClass*>* types, int armorIndex);
         static bool CheckHouseDPS(
             HouseClass* pHouse,
             const Nullable<int>& min,
             const Nullable<int>& max,
             int lockMask,
-            const std::vector<TechnoTypeClass*>* types);
+            const std::vector<TechnoTypeClass*>* types,
+            int armorIndex);
 
         // Count total of a TechnoType across all class arrays
         static int CountOwnedTechnoType(
