@@ -361,6 +361,16 @@ public:
         std::vector<TechnoTypeClass*> EnemyDPSTypes;
         int           EnemyDPSArmor = -1;
 
+        // Enemy weapon-range threat: the longest weapon range (in cells) among
+        // the enemy's owned damaging weapons, scoped by Lock (AA/AG) and Types.
+        // "Don't rush when the enemy outranges me." First step toward the
+        // spatial range-avoidance work (same per-weapon Range read).
+        // RequiredEnemyMaxRangeMax=6  → enemy's longest weapon reaches <= 6 cells
+        Nullable<int> EnemyMaxRangeMin;
+        Nullable<int> EnemyMaxRangeMax;
+        int           EnemyMaxRangeLock = 0;
+        std::vector<TechnoTypeClass*> EnemyMaxRangeTypes;
+
         // Comparative DPS: owner's DPS as a ratio of the (resolved) enemy's,
         // expressed as a percentage (200 = owner has 2.0x the enemy's DPS).
         // "Attack only when I out-gun them." -1 max = uncapped. Uses the shared
@@ -746,6 +756,17 @@ public:
             int lockMask,
             const std::vector<TechnoTypeClass*>* types,
             int armorIndex);
+
+        // Longest weapon range (in cells) among the house's owned damaging
+        // weapons, scoped by lockMask + types. Cached per-house-per-scope/frame.
+        static int ComputeHouseMaxRange(HouseClass* pHouse, int lockMask,
+            const std::vector<TechnoTypeClass*>* types);
+        static bool CheckHouseMaxRange(
+            HouseClass* pHouse,
+            const Nullable<int>& min,
+            const Nullable<int>& max,
+            int lockMask,
+            const std::vector<TechnoTypeClass*>* types);
 
         // Count total of a TechnoType across all class arrays
         static int CountOwnedTechnoType(

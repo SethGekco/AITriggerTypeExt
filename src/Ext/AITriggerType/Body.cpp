@@ -387,6 +387,10 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     ReadDPSLock    (exINI, section, "RequiredEnemyDPSLock",         EnemyDPSLock);
     ReadTechnoTypeList(exINI, section, "RequiredEnemyDPSTypes",     EnemyDPSTypes);
     ReadDPSArmor   (exINI, section, "RequiredEnemyDPSArmor",        EnemyDPSArmor);
+    ReadNullableInt(exINI, section, "RequiredEnemyMaxRangeMin",     EnemyMaxRangeMin);
+    ReadNullableInt(exINI, section, "RequiredEnemyMaxRangeMax",     EnemyMaxRangeMax);
+    ReadDPSLock    (exINI, section, "RequiredEnemyMaxRangeLock",    EnemyMaxRangeLock);
+    ReadTechnoTypeList(exINI, section, "RequiredEnemyMaxRangeTypes", EnemyMaxRangeTypes);
     ReadNullableInt(exINI, section, "RequiredDPSRatioMin",          DPSRatioMin);
     ReadNullableInt(exINI, section, "RequiredDPSRatioMax",          DPSRatioMax);
     ReadDPSLock    (exINI, section, "RequiredDPSRatioLock",         DPSRatioLock);
@@ -807,6 +811,76 @@ bool AITriggerTypeExt::ExtData::CheckHouseDPS(
     return true;
 }
 
+// Longest weapon range (cells) among the house's owned damaging weapons.
+// Weapon Range is in leptons (256 per cell). Same iteration/scope as DPS.
+int AITriggerTypeExt::ExtData::ComputeHouseMaxRange(HouseClass* const pHouse,
+    int const lockMask, const std::vector<TechnoTypeClass*>* const types)
+{
+    if (!pHouse) return 0;
+
+    int maxRange = 0;
+    auto consider = [&](TechnoTypeClass* pType)
+    {
+        if (!pType) return;
+        if (CountOwnedTechnoType(pHouse, pType) <= 0) return;
+
+        for (int wi = 0; wi < 2; ++wi)
+        {
+            auto const pWS = pType->GetWeapon(wi);
+            if (!pWS || !pWS->WeaponType) continue;
+            auto const w = pWS->WeaponType;
+            if (w->Damage <= 0) continue; // only actual weapons threaten
+
+            if (lockMask != 0)
+            {
+                auto const proj = w->Projectile;
+                bool const matchAA = (lockMask & 1) && proj && proj->AA;
+                bool const matchAG = (lockMask & 2) && proj && proj->AG;
+                if (!matchAA && !matchAG) continue;
+            }
+
+            int const cells = w->Range / 256;
+            if (cells > maxRange) maxRange = cells;
+        }
+    };
+
+    if (types && !types->empty())
+    {
+        for (auto const pType : *types) consider(pType);
+        return maxRange;
+    }
+
+    static std::map<int, std::pair<int, int>> cache; // key -> (frame, maxRange)
+    int const frame = Unsorted::CurrentFrame;
+    int const key   = pHouse->ArrayIndex * 8 + (lockMask & 7);
+    auto const it = cache.find(key);
+    if (it != cache.end() && it->second.first == frame)
+        return it->second.second;
+
+    for (auto const p : InfantryTypeClass::Array) consider(p);
+    for (auto const p : UnitTypeClass::Array)     consider(p);
+    for (auto const p : AircraftTypeClass::Array) consider(p);
+    for (auto const p : BuildingTypeClass::Array) consider(p);
+
+    cache[key] = { frame, maxRange };
+    return maxRange;
+}
+
+bool AITriggerTypeExt::ExtData::CheckHouseMaxRange(
+    HouseClass* const pHouse,
+    const Nullable<int>& min,
+    const Nullable<int>& max,
+    int const lockMask,
+    const std::vector<TechnoTypeClass*>* const types)
+{
+    if (!pHouse) return true;
+    if (!min.isset() && !max.isset()) return true;
+    int const val = ComputeHouseMaxRange(pHouse, lockMask, types);
+    if (min.isset() && val < min.Get()) return false;
+    if (max.isset() && max.Get() != -1 && val > max.Get()) return false;
+    return true;
+}
+
 // ============================================================================
 // Sum helpers for Most/Least house selection
 // ============================================================================
@@ -936,7 +1010,8 @@ bool AITriggerTypeExt::ExtData::CheckEnemy(
         EnemyPowerMin.isset()      || EnemyPowerMax.isset()      ||
         EnemyPowerOutputMin.isset()|| EnemyPowerOutputMax.isset()||
         EnemyTechLevelMin.isset()  || EnemyTechLevelMax.isset()  ||
-        EnemyDPSMin.isset()        || EnemyDPSMax.isset();
+        EnemyDPSMin.isset()        || EnemyDPSMax.isset()        ||
+        EnemyMaxRangeMin.isset()   || EnemyMaxRangeMax.isset();
 
     if (!hasAnyEnemyCheck)
         return true;
@@ -954,6 +1029,7 @@ bool AITriggerTypeExt::ExtData::CheckEnemy(
         if (!CheckHousePowerOutput(pH, EnemyPowerOutputMin, EnemyPowerOutputMax)) return false;
         if (!CheckHouseTechLevel(pH, EnemyTechLevelMin, EnemyTechLevelMax)) return false;
         if (!CheckHouseDPS(pH, EnemyDPSMin, EnemyDPSMax, EnemyDPSLock, &EnemyDPSTypes, EnemyDPSArmor)) return false;
+        if (!CheckHouseMaxRange(pH, EnemyMaxRangeMin, EnemyMaxRangeMax, EnemyMaxRangeLock, &EnemyMaxRangeTypes)) return false;
         return true;
     };
 
@@ -1230,6 +1306,10 @@ void AITriggerTypeExt::ExtData::Serialize(T& Stm)
         .Process(this->EnemyDPSLock)
         .Process(this->EnemyDPSTypes)
         .Process(this->EnemyDPSArmor)
+        .Process(this->EnemyMaxRangeMin)
+        .Process(this->EnemyMaxRangeMax)
+        .Process(this->EnemyMaxRangeLock)
+        .Process(this->EnemyMaxRangeTypes)
         .Process(this->DPSRatioMin)
         .Process(this->DPSRatioMax)
         .Process(this->DPSRatioLock)
@@ -1769,6 +1849,10 @@ void AITriggerTypeExt::ExtData::EvaluateAndReport(HouseClass* pOwner, HouseClass
             BuildScalarDetail("RequiredEnemyDPS",
                 static_cast<int>(ComputeHouseDPS(pEnemy, EnemyDPSLock, &EnemyDPSTypes, EnemyDPSArmor)),
                 EnemyDPSMin, EnemyDPSMax, LastCheckReport);
+        if (EnemyMaxRangeMin.isset() || EnemyMaxRangeMax.isset())
+            BuildScalarDetail("RequiredEnemyMaxRange",
+                ComputeHouseMaxRange(pEnemy, EnemyMaxRangeLock, &EnemyMaxRangeTypes),
+                EnemyMaxRangeMin, EnemyMaxRangeMax, LastCheckReport);
     }
 
     // ─── ElapsedTime (game-scope, no house needed) ──────────────────────
