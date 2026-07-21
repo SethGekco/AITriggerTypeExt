@@ -404,6 +404,7 @@ CSF key or `NOSTR:literal text`; the log variant is raw text.
 | `Consider` | passed all AIExt gates, entering the weighted draw | ConditionMet epilogue |
 | `Cancel` | vetoed by an AIExt gate | ConditionMet epilogue |
 | `Reject` | passed gates but LOST the weighted draw | FindEligibleAITeams |
+| `Selected` | WON the weighted draw (team not built yet) | FindEligibleAITeams |
 | `Start` | a team was actually created for this trigger | CreateTeam return |
 | `Destroyed` | team wiped out before finishing its script (failure) | RegisterFailure |
 | `Deleted` | team completed its script successfully | RegisterSuccess |
