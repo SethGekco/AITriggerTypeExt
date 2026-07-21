@@ -315,10 +315,12 @@ public:
         Nullable<int> OwnerPowerOutputMax;
         Nullable<int> OwnerTechLevelMin;
         Nullable<int> OwnerTechLevelMax;
-        // Live combat DPS of everything this house currently owns (primary
-        // weapons, raw damage; see ComputeHouseDPS). Priority-2 "DPS Check" v1.
+        // Live combat DPS of everything this house currently owns (see
+        // ComputeHouseDPS). Priority-2 "DPS Check". Lock = scope bitmask:
+        // 1=AA (anti-air), 2=AG (anti-ground), 0=all. RequiredOwnerDPSLock=AA,AG
         Nullable<int> OwnerDPSMin;
         Nullable<int> OwnerDPSMax;
+        int           OwnerDPSLock = 0;
 
         // -----------------------------------------------------------------------
         // ENEMY — buildings
@@ -348,6 +350,7 @@ public:
         Nullable<int> EnemyTechLevelMax;
         Nullable<int> EnemyDPSMin;
         Nullable<int> EnemyDPSMax;
+        int           EnemyDPSLock = 0;
 
         // -----------------------------------------------------------------------
         // ALLIES — buildings
@@ -710,13 +713,15 @@ public:
             const Nullable<int>& max);
 
         // Sum the raw DPS of every combat object the house currently owns
-        // (primary weapon only, damage>0). Cached per-house per-frame.
-        // Raw DPS per object = Damage * Burst / (ROF / 10).
-        static double ComputeHouseDPS(HouseClass* pHouse);
+        // (weapons 0 and 1, damage>0). lockMask filters by scope: 1=AA, 2=AG,
+        // 0=all. Raw DPS per weapon = Damage * Burst / (ROF / 10).
+        // Cached per-house-per-scope per-frame.
+        static double ComputeHouseDPS(HouseClass* pHouse, int lockMask);
         static bool CheckHouseDPS(
             HouseClass* pHouse,
             const Nullable<int>& min,
-            const Nullable<int>& max);
+            const Nullable<int>& max,
+            int lockMask);
 
         // Count total of a TechnoType across all class arrays
         static int CountOwnedTechnoType(
