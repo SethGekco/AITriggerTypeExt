@@ -190,6 +190,20 @@ RequiredDPSRatioLock=AG      ; ...comparing anti-ground firepower
 A zero-DPS enemy makes `Min` pass trivially (you're dominant). The actual
 ratio shows in the detail report as `RequiredDPSRatio(<pct>):min,max`.
 
+### Threat — enemy weapon range
+
+`RequiredEnemyMaxRangeMin` / `RequiredEnemyMaxRangeMax` gate on the **longest
+weapon range** (in cells) among the enemy's owned damaging weapons, scoped by
+`RequiredEnemyMaxRangeLock` (AA/AG) and `RequiredEnemyMaxRangeTypes`.
+```ini
+RequiredEnemyMaxRangeMax=6       ; only rush if the enemy's longest...
+RequiredEnemyMaxRangeLock=AG     ; ...anti-ground weapon reaches <= 6 cells
+```
+"Don't commit a ground push when the enemy outranges me" (e.g. Prism Towers,
+V3s). Shows in the detail report as `RequiredEnemyMaxRange(<cells>):min,max`.
+This is the first threat-aware condition; the same per-weapon range data is the
+groundwork for spatial range-avoidance.
+
 **Power field sign convention:**
 - Positive = surplus (e.g. `100` means at least 100 units of surplus)
 - `0` = must not be in deficit
