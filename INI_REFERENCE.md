@@ -404,7 +404,7 @@ CSF key or `NOSTR:literal text`; the log variant is raw text.
 | `Consider` | passed all AIExt gates, entering the weighted draw | ConditionMet epilogue |
 | `Cancel` | vetoed by an AIExt gate | ConditionMet epilogue |
 | `Reject` | passed gates but LOST the weighted draw | FindEligibleAITeams |
-| `Start` | won the draw; team is being dispatched | FindEligibleAITeams |
+| `Start` | a team was actually created for this trigger | CreateTeam return |
 | `Destroyed` | team wiped out before finishing its script (failure) | RegisterFailure |
 | `Deleted` | team completed its script successfully | RegisterSuccess |
 
@@ -420,6 +420,8 @@ DebugLog.Consider=...    ; log-text variants (DebugLog.Cancel/Reject/Start/...)
 ```
 Notes: `Consider`/`Reject` fire very frequently (per evaluation / per losing
 trigger per selection) — prefer the log variant and tag only specific triggers.
+`Start` fires once per team the AI *actually builds* (not per draw win), so it
+lines up 1:1 with the eventual `Destroyed`/`Deleted`.
 `Finish` exists as a tag name but is currently a no-op (no hook).
 
 ### Per-gate detail
