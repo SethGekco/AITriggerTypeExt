@@ -433,6 +433,10 @@ public:
         // Fires once per losing trigger per selection, so it's opt-in only
         // (not auto-emitted by the tool) to avoid log spam.
         std::string DebugMessageDisplay_Reject;
+        // Selected — WON the weighted draw this cycle. Upstream of Start:
+        // the AI picked this trigger but the team isn't confirmed built yet
+        // (can be skipped by team caps / production gating). Fires per draw win.
+        std::string DebugMessageDisplay_Selected;
 
         // Per-gate debug quads from the wave-generator tool, keyed by gate root
         // (e.g. "RequiredOwnerBuildings"). Populated generically by scanning the
@@ -524,6 +528,7 @@ public:
         std::string DebugLog_Destroyed;
         std::string DebugLog_Deleted;
         std::string DebugLog_Reject;
+        std::string DebugLog_Selected;
 
         // -----------------------------------------------------------------------
         // DEBUG — per-condition auto-verbose log flags
@@ -625,6 +630,7 @@ public:
             , DebugMessageDisplay_Destroyed {}
             , DebugMessageDisplay_Deleted {}
             , DebugMessageDisplay_Reject {}
+            , DebugMessageDisplay_Selected {}
             , DebugLog_Consider  {}
             , DebugLog_Cancel {}
             , DebugLog_Finish {}
@@ -632,6 +638,7 @@ public:
             , DebugLog_Destroyed {}
             , DebugLog_Deleted {}
             , DebugLog_Reject {}
+            , DebugLog_Selected {}
         { }
 
         virtual ~ExtData() = default;
@@ -764,6 +771,7 @@ public:
     static void EmitDebugDestroyed(ExtData* pExt, AITriggerTypeClass* pThis);
     static void EmitDebugDeleted(ExtData* pExt, AITriggerTypeClass* pThis);
     static void EmitDebugReject(ExtData* pExt, AITriggerTypeClass* pThis);
+    static void EmitDebugSelected(ExtData* pExt, AITriggerTypeClass* pThis);
 
     // Weight adjustments — called from the RegisterSuccess (success=true) /
     // RegisterFailure (success=false) hooks, BEFORE vanilla runs.

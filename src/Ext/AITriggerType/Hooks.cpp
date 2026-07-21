@@ -270,6 +270,10 @@ DEFINE_HOOK(0x6F0D26, HouseClass_FindEligibleAITeams_Start, 0x6)
     // Stash the winner for the CreateTeam-return Start hook.
     g_PendingStartTrigger = pWinner;
 
+    // Selected — won the weighted draw (upstream of the real Start).
+    if (auto const pWinExt = AITriggerTypeExt::ExtMap.Find(pWinner))
+        AITriggerTypeExt::EmitDebugSelected(pWinExt, pWinner);
+
     // Reject — every other trigger in the weighted distribution lost the draw.
     // Skip the whole walk when debug output is off (shipping default) so we
     // don't do a hash lookup per losing trigger every selection cycle.

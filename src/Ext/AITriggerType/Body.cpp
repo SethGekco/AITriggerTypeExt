@@ -424,6 +424,7 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     ReadRawString(exINI, section, "DebugMessageDisplay.Destroyed", DebugMessageDisplay_Destroyed);
     ReadRawString(exINI, section, "DebugMessageDisplay.Deleted", DebugMessageDisplay_Deleted);
     ReadRawString(exINI, section, "DebugMessageDisplay.Reject", DebugMessageDisplay_Reject);
+    ReadRawString(exINI, section, "DebugMessageDisplay.Selected", DebugMessageDisplay_Selected);
 
     // Per-gate debug quads emitted by the wave-generator tool
     // (<root>.Debug.MessageDisplay/ValueDisplay/LogMessage/LogWrite/
@@ -457,6 +458,8 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
         DebugLog_Deleted = exINI.value();
     if (exINI.ReadString(section, "DebugLog.Reject"))
         DebugLog_Reject = exINI.value();
+    if (exINI.ReadString(section, "DebugLog.Selected"))
+        DebugLog_Selected = exINI.value();
 
     // -----------------------------------------------------------------------
     // Debug — per-condition auto-verbose flags
@@ -1395,6 +1398,14 @@ void AITriggerTypeExt::EmitDebugReject(
     if (!pExt || !pThis) return;
     EmitLifecycle("Reject", pThis,
         pExt->DebugMessageDisplay_Reject, pExt->DebugLog_Reject);
+}
+
+void AITriggerTypeExt::EmitDebugSelected(
+    ExtData* pExt, AITriggerTypeClass* pThis)
+{
+    if (!pExt || !pThis) return;
+    EmitLifecycle("Selected", pThis,
+        pExt->DebugMessageDisplay_Selected, pExt->DebugLog_Selected);
 }
 
 // Replace vanilla's global weight delta for THIS trigger. Runs at the hook
