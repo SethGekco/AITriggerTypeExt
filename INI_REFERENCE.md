@@ -178,6 +178,18 @@ All four filters compose: `Types` (which units) × `Lock` (which weapons) ×
 `Armor` (vs which armor) → e.g. "enemy tanks' anti-ground effective DPS vs my
 heavy armor" — the real "will my heavy tank push survive" number.
 
+### Comparative — owner vs enemy DPS ratio
+
+`RequiredDPSRatioMin` / `RequiredDPSRatioMax` gate on the owner's DPS as a
+**percentage of the resolved enemy's** DPS (`200` = owner has 2.0× the enemy).
+`RequiredDPSRatioLock` (AA/AG) applies to both sides. `-1` max = uncapped.
+```ini
+RequiredDPSRatioMin=200      ; only fire when I out-gun the enemy 2:1
+RequiredDPSRatioLock=AG      ; ...comparing anti-ground firepower
+```
+A zero-DPS enemy makes `Min` pass trivially (you're dominant). The actual
+ratio shows in the detail report as `RequiredDPSRatio(<pct>):min,max`.
+
 **Power field sign convention:**
 - Positive = surplus (e.g. `100` means at least 100 units of surplus)
 - `0` = must not be in deficit
