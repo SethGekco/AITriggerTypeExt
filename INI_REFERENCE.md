@@ -204,6 +204,20 @@ V3s). Shows in the detail report as `RequiredEnemyMaxRange(<cells>):min,max`.
 This is the first threat-aware condition; the same per-weapon range data is the
 groundwork for spatial range-avoidance.
 
+### Threat — is my team outranged?
+
+`RequiredTeamRangeRatioMin` / `RequiredTeamRangeRatioMax` compares **this
+trigger's own team** (Team1/Team2 taskforce) longest weapon range to the
+enemy's, as a percentage (`100` = matched, `<100` = my team is outranged).
+`RequiredTeamRangeRatioLock` (AA/AG) scopes both sides.
+```ini
+RequiredTeamRangeRatioMin=100    ; don't dispatch if my team is outranged
+```
+Because it reads the trigger's actual taskforce, a Dog rush and a Prism push in
+the same house get different answers. Shows as `RequiredTeamRangeRatio(<pct>)`.
+A zero-range enemy makes `Min` pass trivially. This is the "decide" step; actual
+mid-move steering around enemy ranges is a separate (pathfinding) effort.
+
 **Power field sign convention:**
 - Positive = surplus (e.g. `100` means at least 100 units of surplus)
 - `0` = must not be in deficit
