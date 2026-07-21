@@ -335,6 +335,7 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     ReadNullableInt(exINI, section, "RequiredOwnerDPSMin",          OwnerDPSMin);
     ReadNullableInt(exINI, section, "RequiredOwnerDPSMax",          OwnerDPSMax);
     ReadDPSLock    (exINI, section, "RequiredOwnerDPSLock",         OwnerDPSLock);
+    ReadTechnoTypeList(exINI, section, "RequiredOwnerDPSTypes",     OwnerDPSTypes);
 
     // -----------------------------------------------------------------------
     // Enemy
@@ -368,6 +369,7 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     ReadNullableInt(exINI, section, "RequiredEnemyDPSMin",          EnemyDPSMin);
     ReadNullableInt(exINI, section, "RequiredEnemyDPSMax",          EnemyDPSMax);
     ReadDPSLock    (exINI, section, "RequiredEnemyDPSLock",         EnemyDPSLock);
+    ReadTechnoTypeList(exINI, section, "RequiredEnemyDPSTypes",     EnemyDPSTypes);
 
     // -----------------------------------------------------------------------
     // Allies
@@ -706,17 +708,10 @@ bool AITriggerTypeExt::ExtData::CheckHouseTechLevel(
 //             A weapon counts if the mask is 0, or it matches a requested scope.
 // Cached per-house-per-scope per frame — ConditionMet runs hot and several
 // triggers may query the same house/scope on one frame.
-double AITriggerTypeExt::ExtData::ComputeHouseDPS(HouseClass* const pHouse, int const lockMask)
+double AITriggerTypeExt::ExtData::ComputeHouseDPS(HouseClass* const pHouse,
+    int const lockMask, const std::vector<TechnoTypeClass*>* const types)
 {
     if (!pHouse) return 0.0;
-
-    static std::map<int, std::pair<int, double>> cache; // key -> (frame, dps)
-    int const frame = Unsorted::CurrentFrame;
-    int const key   = pHouse->ArrayIndex * 8 + (lockMask & 7);
-
-    auto const it = cache.find(key);
-    if (it != cache.end() && it->second.first == frame)
-        return it->second.second;
 
     double total = 0.0;
     auto accumulate = [&](TechnoTypeClass* pType)
@@ -746,6 +741,21 @@ double AITriggerTypeExt::ExtData::ComputeHouseDPS(HouseClass* const pHouse, int 
         }
     };
 
+    // Typed: only the listed unit types. Not cached (few types, opt-in, rare).
+    if (types && !types->empty())
+    {
+        for (auto const pType : *types) accumulate(pType);
+        return total;
+    }
+
+    // Unfiltered: all types, cached per house+scope per frame.
+    static std::map<int, std::pair<int, double>> cache; // key -> (frame, dps)
+    int const frame = Unsorted::CurrentFrame;
+    int const key   = pHouse->ArrayIndex * 8 + (lockMask & 7);
+    auto const it = cache.find(key);
+    if (it != cache.end() && it->second.first == frame)
+        return it->second.second;
+
     for (auto const p : InfantryTypeClass::Array) accumulate(p);
     for (auto const p : UnitTypeClass::Array)     accumulate(p);
     for (auto const p : AircraftTypeClass::Array) accumulate(p);
@@ -759,11 +769,12 @@ bool AITriggerTypeExt::ExtData::CheckHouseDPS(
     HouseClass* const pHouse,
     const Nullable<int>& min,
     const Nullable<int>& max,
-    int const lockMask)
+    int const lockMask,
+    const std::vector<TechnoTypeClass*>* const types)
 {
     if (!pHouse) return true;
     if (!min.isset() && !max.isset()) return true; // no DPS gate on this house
-    int const val = static_cast<int>(ComputeHouseDPS(pHouse, lockMask));
+    int const val = static_cast<int>(ComputeHouseDPS(pHouse, lockMask, types));
     if (min.isset() && val < min.Get()) return false;
     if (max.isset() && max.Get() != -1 && val > max.Get()) return false;
     return true;
@@ -875,7 +886,7 @@ bool AITriggerTypeExt::ExtData::CheckOwner(HouseClass* const pHouse) const
     if (!CheckHousePower(pHouse, OwnerPowerMin, OwnerPowerMax)) return false;
     if (!CheckHousePowerOutput(pHouse, OwnerPowerOutputMin, OwnerPowerOutputMax)) return false;
     if (!CheckHouseTechLevel(pHouse, OwnerTechLevelMin, OwnerTechLevelMax)) return false;
-    if (!CheckHouseDPS(pHouse, OwnerDPSMin, OwnerDPSMax, OwnerDPSLock)) return false;
+    if (!CheckHouseDPS(pHouse, OwnerDPSMin, OwnerDPSMax, OwnerDPSLock, &OwnerDPSTypes)) return false;
     return true;
 }
 
@@ -915,7 +926,7 @@ bool AITriggerTypeExt::ExtData::CheckEnemy(
         if (!CheckHousePower(pH, EnemyPowerMin, EnemyPowerMax)) return false;
         if (!CheckHousePowerOutput(pH, EnemyPowerOutputMin, EnemyPowerOutputMax)) return false;
         if (!CheckHouseTechLevel(pH, EnemyTechLevelMin, EnemyTechLevelMax)) return false;
-        if (!CheckHouseDPS(pH, EnemyDPSMin, EnemyDPSMax, EnemyDPSLock)) return false;
+        if (!CheckHouseDPS(pH, EnemyDPSMin, EnemyDPSMax, EnemyDPSLock, &EnemyDPSTypes)) return false;
         return true;
     };
 
@@ -1147,6 +1158,7 @@ void AITriggerTypeExt::ExtData::Serialize(T& Stm)
         .Process(this->OwnerDPSMin)
         .Process(this->OwnerDPSMax)
         .Process(this->OwnerDPSLock)
+        .Process(this->OwnerDPSTypes)
         ;
 
     SerializeGate(Stm, this->EnemyBuildings);
@@ -1165,6 +1177,7 @@ void AITriggerTypeExt::ExtData::Serialize(T& Stm)
         .Process(this->EnemyDPSMin)
         .Process(this->EnemyDPSMax)
         .Process(this->EnemyDPSLock)
+        .Process(this->EnemyDPSTypes)
         ;
 
     SerializeGate(Stm, this->AlliesBuildings);
@@ -1676,7 +1689,7 @@ void AITriggerTypeExt::ExtData::EvaluateAndReport(HouseClass* pOwner, HouseClass
     }
     if (OwnerDPSMin.isset() || OwnerDPSMax.isset())
         BuildScalarDetail("RequiredOwnerDPS",
-            static_cast<int>(ComputeHouseDPS(pOwner, OwnerDPSLock)),
+            static_cast<int>(ComputeHouseDPS(pOwner, OwnerDPSLock, &OwnerDPSTypes)),
             OwnerDPSMin, OwnerDPSMax, LastCheckReport);
 
     // ─── Enemy scope ────────────────────────────────────────────────────
@@ -1699,7 +1712,7 @@ void AITriggerTypeExt::ExtData::EvaluateAndReport(HouseClass* pOwner, HouseClass
         }
         if (EnemyDPSMin.isset() || EnemyDPSMax.isset())
             BuildScalarDetail("RequiredEnemyDPS",
-                static_cast<int>(ComputeHouseDPS(pEnemy, EnemyDPSLock)),
+                static_cast<int>(ComputeHouseDPS(pEnemy, EnemyDPSLock, &EnemyDPSTypes)),
                 EnemyDPSMin, EnemyDPSMax, LastCheckReport);
     }
 
