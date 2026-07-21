@@ -158,6 +158,14 @@ ground (by the projectile's `AA`/`AG` flags), `AA,AG` or omit = all. So
 `RequiredEnemyDPSLock=AG` measures the enemy's anti-ground firepower — the
 number that matters before a ground rush.
 
+**`Types`** unit filter (`RequiredOwnerDPSTypes` / `RequiredEnemyDPSTypes`) —
+a comma list of TechnoType IDs; the DPS sum counts only those unit types
+(empty = all). Combines with `Lock` as an intersection:
+```ini
+RequiredEnemyDPSTypes=HTNK,APOC     ; only heavy/apoc tanks...
+RequiredEnemyDPSLock=AG             ; ...their anti-ground firepower
+```
+
 **Power field sign convention:**
 - Positive = surplus (e.g. `100` means at least 100 units of surplus)
 - `0` = must not be in deficit
