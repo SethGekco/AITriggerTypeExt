@@ -753,7 +753,7 @@ double AITriggerTypeExt::ExtData::ComputeHouseDPS(HouseClass* const pHouse,
             auto const pWS = pType->GetWeapon(wi);
             if (!pWS || !pWS->WeaponType) continue;
             auto const w = pWS->WeaponType;
-            if (w->ROF <= 0 || w->Damage <= 0) continue;
+            if (w->ROF <= 0 || w->Damage <= 1) continue; // skip detector/utility weapons (e.g. VirtualScanner, Damage=1)
 
             if (lockMask != 0)
             {
@@ -832,7 +832,7 @@ int AITriggerTypeExt::ExtData::ComputeHouseMaxRange(HouseClass* const pHouse,
             auto const pWS = pType->GetWeapon(wi);
             if (!pWS || !pWS->WeaponType) continue;
             auto const w = pWS->WeaponType;
-            if (w->Damage <= 0) continue; // only actual weapons threaten
+            if (w->Damage <= 1) continue; // real weapons only (skip detectors like VirtualScanner, Damage=1)
 
             if (lockMask != 0)
             {
@@ -1240,7 +1240,7 @@ int AITriggerTypeExt::ExtData::ComputeTriggerTeamMaxRange(
                 auto const pWS = pType->GetWeapon(wi);
                 if (!pWS || !pWS->WeaponType) continue;
                 auto const w = pWS->WeaponType;
-                if (w->Damage <= 0) continue;
+                if (w->Damage <= 1) continue; // skip detector/utility secondaries
                 if (lockMask != 0)
                 {
                     auto const proj = w->Projectile;
