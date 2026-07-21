@@ -166,6 +166,18 @@ RequiredEnemyDPSTypes=HTNK,APOC     ; only heavy/apoc tanks...
 RequiredEnemyDPSLock=AG             ; ...their anti-ground firepower
 ```
 
+**`Armor`** weighting (`RequiredOwnerDPSArmor` / `RequiredEnemyDPSArmor`) —
+multiplies each weapon's DPS by its warhead's Verses vs the named armor, so the
+value becomes *effective* damage dealt to that armor rather than raw firepower.
+Armors: `none, flak, plate, light, medium, heavy, wood, steel, concrete,
+special_1, special_2`. Omit = raw.
+```ini
+RequiredEnemyDPSArmor=heavy         ; effective enemy DPS vs HEAVY armor
+```
+All four filters compose: `Types` (which units) × `Lock` (which weapons) ×
+`Armor` (vs which armor) → e.g. "enemy tanks' anti-ground effective DPS vs my
+heavy armor" — the real "will my heavy tank push survive" number.
+
 **Power field sign convention:**
 - Positive = surplus (e.g. `100` means at least 100 units of surplus)
 - `0` = must not be in deficit
