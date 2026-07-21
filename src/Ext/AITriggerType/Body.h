@@ -361,6 +361,14 @@ public:
         std::vector<TechnoTypeClass*> EnemyDPSTypes;
         int           EnemyDPSArmor = -1;
 
+        // Comparative DPS: owner's DPS as a ratio of the (resolved) enemy's,
+        // expressed as a percentage (200 = owner has 2.0x the enemy's DPS).
+        // "Attack only when I out-gun them." -1 max = uncapped. Uses the shared
+        // RequiredDPSRatioLock scope on both sides.
+        Nullable<int> DPSRatioMin;
+        Nullable<int> DPSRatioMax;
+        int           DPSRatioLock = 0;
+
         // -----------------------------------------------------------------------
         // ALLIES — buildings
         // -----------------------------------------------------------------------
@@ -679,6 +687,7 @@ public:
         // Internal check helpers
         bool CheckOwner (HouseClass* pHouse) const;
         bool CheckEnemy (HouseClass* pCallingHouse, HouseClass* pTargetHouse) const;
+        bool CheckDPSRatio(HouseClass* pCallingHouse, HouseClass* pTargetHouse) const;
         bool CheckAllies(HouseClass* pCallingHouse) const;
         bool CheckNeutral() const;
         bool CheckElapsedTime() const;

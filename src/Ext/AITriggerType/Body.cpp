@@ -387,6 +387,9 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     ReadDPSLock    (exINI, section, "RequiredEnemyDPSLock",         EnemyDPSLock);
     ReadTechnoTypeList(exINI, section, "RequiredEnemyDPSTypes",     EnemyDPSTypes);
     ReadDPSArmor   (exINI, section, "RequiredEnemyDPSArmor",        EnemyDPSArmor);
+    ReadNullableInt(exINI, section, "RequiredDPSRatioMin",          DPSRatioMin);
+    ReadNullableInt(exINI, section, "RequiredDPSRatioMax",          DPSRatioMax);
+    ReadDPSLock    (exINI, section, "RequiredDPSRatioLock",         DPSRatioLock);
 
     // -----------------------------------------------------------------------
     // Allies
@@ -1129,8 +1132,31 @@ bool AITriggerTypeExt::ExtData::ExtraPrerequisitesMet(
     if (!CheckElapsedTime())                      return false;
     if (!CheckOwner(pCallingHouse))               return false;
     if (!CheckEnemy(pCallingHouse, pTargetHouse)) return false;
+    if (!CheckDPSRatio(pCallingHouse, pTargetHouse)) return false;
     if (!CheckAllies(pCallingHouse))              return false;
     if (!CheckNeutral())                          return false;
+    return true;
+}
+
+// Owner-vs-enemy DPS ratio (percentage; 200 = owner has 2.0x the enemy DPS).
+// Cross-multiplied to avoid division and handle a zero-DPS enemy cleanly:
+//   Min: ownerDPS*100 >= Min*enemyDPS      (enemy 0 → always passes: dominant)
+//   Max: ownerDPS*100 <= Max*enemyDPS
+bool AITriggerTypeExt::ExtData::CheckDPSRatio(
+    HouseClass* const pCallingHouse, HouseClass* const pTargetHouse) const
+{
+    if (!DPSRatioMin.isset() && !DPSRatioMax.isset()) return true;
+    if (!pCallingHouse) return true;
+
+    auto const pEnemy = ResolveTargetHouse(pCallingHouse, pTargetHouse);
+    double const ownerDPS = ComputeHouseDPS(pCallingHouse, DPSRatioLock, nullptr, -1);
+    double const enemyDPS = pEnemy ? ComputeHouseDPS(pEnemy, DPSRatioLock, nullptr, -1) : 0.0;
+
+    if (DPSRatioMin.isset() && ownerDPS * 100.0 < DPSRatioMin.Get() * enemyDPS)
+        return false;
+    if (DPSRatioMax.isset() && DPSRatioMax.Get() != -1
+        && ownerDPS * 100.0 > DPSRatioMax.Get() * enemyDPS)
+        return false;
     return true;
 }
 
@@ -1204,6 +1230,9 @@ void AITriggerTypeExt::ExtData::Serialize(T& Stm)
         .Process(this->EnemyDPSLock)
         .Process(this->EnemyDPSTypes)
         .Process(this->EnemyDPSArmor)
+        .Process(this->DPSRatioMin)
+        .Process(this->DPSRatioMax)
+        .Process(this->DPSRatioLock)
         ;
 
     SerializeGate(Stm, this->AlliesBuildings);
@@ -1748,6 +1777,16 @@ void AITriggerTypeExt::ExtData::EvaluateAndReport(HouseClass* pOwner, HouseClass
         int elapsed = Unsorted::CurrentFrame;
         BuildScalarDetail("RequiredElapsedTime", elapsed,
             ElapsedTimeMin, ElapsedTimeMax, LastCheckReport);
+    }
+
+    // ─── DPS ratio (owner vs enemy, as a percentage) ────────────────────
+    if (DPSRatioMin.isset() || DPSRatioMax.isset())
+    {
+        double const o = ComputeHouseDPS(pOwner, DPSRatioLock, nullptr, -1);
+        double const e = pEnemy ? ComputeHouseDPS(pEnemy, DPSRatioLock, nullptr, -1) : 0.0;
+        int const ratioPct = (e > 0.0) ? static_cast<int>(o * 100.0 / e) : 999999;
+        BuildScalarDetail("RequiredDPSRatio", ratioPct,
+            DPSRatioMin, DPSRatioMax, LastCheckReport);
     }
 
     // ─── Deferred to follow-up ships ────────────────────────────────────
