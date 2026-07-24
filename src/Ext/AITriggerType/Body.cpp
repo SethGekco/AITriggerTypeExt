@@ -141,6 +141,72 @@ static void ReadTechnoTypeList(
     }
 }
 
+// ---------------------------------------------------------------------------
+// [DPSGroupTypes] — named unit groups, shorthand for the DPS/range Types
+// filters. Declared once globally:
+//   [DPSGroupTypes]
+//   Tanks=HTNK,MTNK,APOC
+// then RequiredEnemyDPSTypes=Tanks expands to those types. A token that isn't a
+// group name is treated as an inline TechnoType ID (so inline lists still work).
+// ---------------------------------------------------------------------------
+static std::map<std::string, std::vector<TechnoTypeClass*>> g_DPSGroups;
+static bool g_DPSGroupsParsed = false;
+
+static TechnoTypeClass* FindTechnoTypeByID(const char* id)
+{
+    TechnoTypeClass* p = InfantryTypeClass::Find(id);
+    if (!p) p = UnitTypeClass::Find(id);
+    if (!p) p = AircraftTypeClass::Find(id);
+    if (!p) p = BuildingTypeClass::Find(id);
+    return p;
+}
+
+static void ParseDPSGroups(CCINIClass* pINI)
+{
+    g_DPSGroups.clear();
+    if (!pINI) return;
+    const char* const kSection = "DPSGroupTypes";
+    int const n = pINI->GetKeyCount(kSection);
+    for (int i = 0; i < n; ++i)
+    {
+        const char* key = pINI->GetKeyName(kSection, i);
+        if (!key || !*key) continue;
+        char buf[256];
+        pINI->ReadString(kSection, key, "", buf, sizeof(buf));
+        std::vector<TechnoTypeClass*>& grp = g_DPSGroups[key];
+        char* ctx = nullptr;
+        for (char* tok = strtok_s(buf, ",", &ctx); tok; tok = strtok_s(nullptr, ",", &ctx))
+        {
+            while (*tok == ' ' || *tok == '\t') ++tok;
+            char* end = tok + strlen(tok);
+            while (end > tok && (end[-1] == ' ' || end[-1] == '\t')) *(--end) = 0;
+            if (auto p = FindTechnoTypeByID(tok)) grp.push_back(p);
+        }
+    }
+}
+
+// Like ReadTechnoTypeList, but a token may be a [DPSGroupTypes] group name
+// (expands to its members) or an inline TechnoType ID.
+static void ReadDPSTypeList(INI_EX& exINI, const char* pSection, const char* pKey,
+    std::vector<TechnoTypeClass*>& out)
+{
+    if (!exINI.ReadString(pSection, pKey)) return;
+    out.clear();
+    char* raw = exINI.value();
+    char* ctx = nullptr;
+    for (char* tok = strtok_s(raw, ",", &ctx); tok; tok = strtok_s(nullptr, ",", &ctx))
+    {
+        while (*tok == ' ' || *tok == '\t') ++tok;
+        char* end = tok + strlen(tok);
+        while (end > tok && (end[-1] == ' ' || end[-1] == '\t')) *(--end) = 0;
+        auto const git = g_DPSGroups.find(tok);
+        if (git != g_DPSGroups.end())
+            out.insert(out.end(), git->second.begin(), git->second.end());
+        else if (auto p = FindTechnoTypeByID(tok))
+            out.push_back(p);
+    }
+}
+
 // Read a list of BuildingTypeClass*
 static void ReadBuildingTypeList(
     INI_EX& exINI,
@@ -350,7 +416,8 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     ReadNullableInt(exINI, section, "RequiredOwnerDPSMin",          OwnerDPSMin);
     ReadNullableInt(exINI, section, "RequiredOwnerDPSMax",          OwnerDPSMax);
     ReadDPSLock    (exINI, section, "RequiredOwnerDPSLock",         OwnerDPSLock);
-    ReadTechnoTypeList(exINI, section, "RequiredOwnerDPSTypes",     OwnerDPSTypes);
+    if (!g_DPSGroupsParsed) { ParseDPSGroups(pINI); g_DPSGroupsParsed = true; }
+    ReadDPSTypeList(exINI, section, "RequiredOwnerDPSTypes",     OwnerDPSTypes);
     ReadDPSArmor   (exINI, section, "RequiredOwnerDPSArmor",        OwnerDPSArmor);
 
     // -----------------------------------------------------------------------
@@ -385,12 +452,12 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     ReadNullableInt(exINI, section, "RequiredEnemyDPSMin",          EnemyDPSMin);
     ReadNullableInt(exINI, section, "RequiredEnemyDPSMax",          EnemyDPSMax);
     ReadDPSLock    (exINI, section, "RequiredEnemyDPSLock",         EnemyDPSLock);
-    ReadTechnoTypeList(exINI, section, "RequiredEnemyDPSTypes",     EnemyDPSTypes);
+    ReadDPSTypeList(exINI, section, "RequiredEnemyDPSTypes",     EnemyDPSTypes);
     ReadDPSArmor   (exINI, section, "RequiredEnemyDPSArmor",        EnemyDPSArmor);
     ReadNullableInt(exINI, section, "RequiredEnemyMaxRangeMin",     EnemyMaxRangeMin);
     ReadNullableInt(exINI, section, "RequiredEnemyMaxRangeMax",     EnemyMaxRangeMax);
     ReadDPSLock    (exINI, section, "RequiredEnemyMaxRangeLock",    EnemyMaxRangeLock);
-    ReadTechnoTypeList(exINI, section, "RequiredEnemyMaxRangeTypes", EnemyMaxRangeTypes);
+    ReadDPSTypeList(exINI, section, "RequiredEnemyMaxRangeTypes", EnemyMaxRangeTypes);
     ReadNullableInt(exINI, section, "RequiredDPSRatioMin",          DPSRatioMin);
     ReadNullableInt(exINI, section, "RequiredDPSRatioMax",          DPSRatioMax);
     ReadDPSLock    (exINI, section, "RequiredDPSRatioLock",         DPSRatioLock);
