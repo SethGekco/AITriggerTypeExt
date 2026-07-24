@@ -165,6 +165,14 @@ a comma list of TechnoType IDs; the DPS sum counts only those unit types
 RequiredEnemyDPSTypes=HTNK,APOC     ; only heavy/apoc tanks...
 RequiredEnemyDPSLock=AG             ; ...their anti-ground firepower
 ```
+A token may also be a **named group** from a global `[DPSGroupTypes]` section
+(reusable across triggers; `RequiredEnemyMaxRangeTypes` accepts them too):
+```ini
+[DPSGroupTypes]
+Tanks=HTNK,MTNK,APOC
+; ...then anywhere:
+RequiredEnemyDPSTypes=Tanks         ; expands to the group
+```
 
 **`Armor`** weighting (`RequiredOwnerDPSArmor` / `RequiredEnemyDPSArmor`) —
 multiplies each weapon's DPS by its warhead's Verses vs the named armor, so the
