@@ -226,6 +226,31 @@ the same house get different answers. Shows as `RequiredTeamRangeRatio(<pct>)`.
 A zero-range enemy makes `Min` pass trivially. This is the "decide" step; actual
 mid-move steering around enemy ranges is a separate (pathfinding) effort.
 
+### Proximity — how close are the two bases?
+
+`RequiredBaseDistanceMin` / `RequiredBaseDistanceMax` gate on the straight-line
+distance **in cells** between the owner's base center and the resolved enemy's
+base center (`HouseClass::GetBaseCenter()` — the AI base center, or its spawn
+cell before a base exists). `-1` max = uncapped.
+```ini
+RequiredBaseDistanceMin=60       ; only fire when the enemy base is 60+ cells away
+RequiredBaseDistanceMax=-1
+```
+Lets a house pick its posture from map geometry: bases far apart → big set-piece
+waves are safe to assemble and march; bases close together → skip this trigger in
+favour of fast guerilla harassment.
+```ini
+[BigArmoredPush.AIExt]
+RequiredBaseDistanceMin=50        ; long march is worth it — commit the deathball
+
+[EarlyGuerillaRush.AIExt]
+RequiredBaseDistanceMax=35        ; neighbours — harass instead of massing
+```
+Uses the same `TargetHouseMode`-resolved enemy as the other enemy checks. If no
+single enemy resolves (`Any`/`All` modes) or a base center is unset, distance is
+`0`, which trivially satisfies `Min`. Shows in the detail report as
+`RequiredBaseDistance(<cells>):min,max`.
+
 **Power field sign convention:**
 - Positive = surplus (e.g. `100` means at least 100 units of surplus)
 - `0` = must not be in deficit

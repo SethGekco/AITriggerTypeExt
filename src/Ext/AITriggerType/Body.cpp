@@ -464,6 +464,8 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     ReadNullableInt(exINI, section, "RequiredTeamRangeRatioMin",    TeamRangeRatioMin);
     ReadNullableInt(exINI, section, "RequiredTeamRangeRatioMax",    TeamRangeRatioMax);
     ReadDPSLock    (exINI, section, "RequiredTeamRangeRatioLock",   TeamRangeRatioLock);
+    ReadNullableInt(exINI, section, "RequiredBaseDistanceMin",      BaseDistanceMin);
+    ReadNullableInt(exINI, section, "RequiredBaseDistanceMax",      BaseDistanceMax);
 
     // -----------------------------------------------------------------------
     // Allies
@@ -1280,6 +1282,7 @@ bool AITriggerTypeExt::ExtData::ExtraPrerequisitesMet(
     if (!CheckEnemy(pCallingHouse, pTargetHouse)) return false;
     if (!CheckDPSRatio(pCallingHouse, pTargetHouse)) return false;
     if (!CheckTeamRangeRatio(pCallingHouse, pTargetHouse)) return false;
+    if (!CheckBaseDistance(pCallingHouse, pTargetHouse)) return false;
     if (!CheckAllies(pCallingHouse))              return false;
     if (!CheckNeutral())                          return false;
     return true;
@@ -1343,6 +1346,36 @@ bool AITriggerTypeExt::ExtData::CheckTeamRangeRatio(
         return false;
     if (TeamRangeRatioMax.isset() && TeamRangeRatioMax.Get() != -1
         && teamRange * 100 > TeamRangeRatioMax.Get() * enemyRange)
+        return false;
+    return true;
+}
+
+// Distance (in cells) between the owner's base center and the resolved enemy's
+// base center. Gate on a min/max window so a trigger can react to base
+// proximity ("bases far apart → big waves; close together → guerilla"). Uses
+// HouseClass::GetBaseCenter() (BaseCenter, or BaseSpawnCell if unset). If no
+// single enemy resolves (Any/All modes) or a house lacks a base, distance is 0,
+// which trivially satisfies Min (no meaningful separation to gate on).
+bool AITriggerTypeExt::ExtData::CheckBaseDistance(
+    HouseClass* const pCallingHouse, HouseClass* const pTargetHouse) const
+{
+    if (!BaseDistanceMin.isset() && !BaseDistanceMax.isset()) return true;
+    if (!pCallingHouse) return true;
+
+    auto const pEnemy = ResolveTargetHouse(pCallingHouse, pTargetHouse);
+    int dist = 0;
+    if (pEnemy)
+    {
+        auto const ownCenter   = pCallingHouse->GetBaseCenter();
+        auto const enemyCenter = pEnemy->GetBaseCenter();
+        if (ownCenter != CellStruct::Empty && enemyCenter != CellStruct::Empty)
+            dist = static_cast<int>(ownCenter.DistanceFrom(enemyCenter));
+    }
+
+    if (BaseDistanceMin.isset() && dist < BaseDistanceMin.Get())
+        return false;
+    if (BaseDistanceMax.isset() && BaseDistanceMax.Get() != -1
+        && dist > BaseDistanceMax.Get())
         return false;
     return true;
 }
@@ -1449,6 +1482,8 @@ void AITriggerTypeExt::ExtData::Serialize(T& Stm)
         .Process(this->TeamRangeRatioMin)
         .Process(this->TeamRangeRatioMax)
         .Process(this->TeamRangeRatioLock)
+        .Process(this->BaseDistanceMin)
+        .Process(this->BaseDistanceMax)
         ;
 
     SerializeGate(Stm, this->AlliesBuildings);
@@ -2017,6 +2052,21 @@ void AITriggerTypeExt::ExtData::EvaluateAndReport(HouseClass* pOwner, HouseClass
         int const ratioPct = (er > 0) ? (tr * 100 / er) : 999999;
         BuildScalarDetail("RequiredTeamRangeRatio", ratioPct,
             TeamRangeRatioMin, TeamRangeRatioMax, LastCheckReport);
+    }
+
+    // ─── Base-to-base distance (cells) ──────────────────────────────────
+    if (BaseDistanceMin.isset() || BaseDistanceMax.isset())
+    {
+        int dist = 0;
+        if (pEnemy)
+        {
+            auto const oc = pOwner->GetBaseCenter();
+            auto const ec = pEnemy->GetBaseCenter();
+            if (oc != CellStruct::Empty && ec != CellStruct::Empty)
+                dist = static_cast<int>(oc.DistanceFrom(ec));
+        }
+        BuildScalarDetail("RequiredBaseDistance", dist,
+            BaseDistanceMin, BaseDistanceMax, LastCheckReport);
     }
 
     // ─── Deferred to follow-up ships ────────────────────────────────────

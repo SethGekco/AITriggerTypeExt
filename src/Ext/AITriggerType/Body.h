@@ -389,6 +389,15 @@ public:
         Nullable<int> DPSRatioMax;
         int           DPSRatioLock = 0;
 
+        // Base separation: straight-line distance (in cells) between the owner's
+        // base center and the resolved enemy's base center. Lets a trigger gate
+        // on how close the two bases are — "far apart (100 cells) → big set-piece
+        // waves are fine; close (20 cells) → prefer fast guerilla harassment."
+        // -1 max = uncapped. A zero/absent enemy base center yields distance 0.
+        // RequiredBaseDistanceMin=60 → only fire when the enemy base is 60+ cells away.
+        Nullable<int> BaseDistanceMin;
+        Nullable<int> BaseDistanceMax;
+
         // -----------------------------------------------------------------------
         // ALLIES — buildings
         // -----------------------------------------------------------------------
@@ -709,6 +718,7 @@ public:
         bool CheckEnemy (HouseClass* pCallingHouse, HouseClass* pTargetHouse) const;
         bool CheckDPSRatio(HouseClass* pCallingHouse, HouseClass* pTargetHouse) const;
         bool CheckTeamRangeRatio(HouseClass* pCallingHouse, HouseClass* pTargetHouse) const;
+        bool CheckBaseDistance(HouseClass* pCallingHouse, HouseClass* pTargetHouse) const;
         bool CheckAllies(HouseClass* pCallingHouse) const;
         bool CheckNeutral() const;
         bool CheckElapsedTime() const;
