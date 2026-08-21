@@ -317,6 +317,19 @@ So "Hard only" is `Min=0,Max=0`; "Normal or harder" is `Max=1`; "Easy only" is
 `Min=2`. Lets a mod give tougher AI exclusive access to certain waves/tactics.
 `-1` max = uncapped. Detail report: `RequiredOwnerDifficulty(<index>):min,max`.
 
+### Variety — probabilistic gate
+
+`RequiredChance` (0–100) passes when a **synced** random roll is below the value,
+re-rolled at most once per game frame:
+```ini
+RequiredChance=25     ; this trigger is eligible on only ~25% of frames
+```
+A throttle for wave variety — the trigger still has to win the weighted draw, so
+this thins how often it competes. Uses the game's synchronized RNG, so it is
+**multiplayer-safe** (no desync). The per-frame cache means every evaluation
+within one frame agrees; it is not serialized. Detail report:
+`RequiredChance(<1=pass,0=fail>)`.
+
 **Power field sign convention:**
 - Positive = surplus (e.g. `100` means at least 100 units of surplus)
 - `0` = must not be in deficit

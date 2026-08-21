@@ -16,6 +16,11 @@
 #include <WeaponTypeClass.h>
 #include <BulletTypeClass.h>
 #include <WarheadTypeClass.h>
+#include <ScenarioClass.h>
+#include <TeamClass.h>
+#include <TeamTypeClass.h>
+#include <ScriptClass.h>
+#include <ScriptTypeClass.h>
 
 #include <deque>
 
@@ -479,6 +484,7 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     ReadNullableInt(exINI, section, "RequiredCooldown",             Cooldown);
     ReadNullableInt(exINI, section, "RequiredOwnerDifficultyMin",   OwnerDifficultyMin);
     ReadNullableInt(exINI, section, "RequiredOwnerDifficultyMax",   OwnerDifficultyMax);
+    ReadNullableInt(exINI, section, "RequiredChance",               Chance);
 
     // -----------------------------------------------------------------------
     // Allies
@@ -1300,6 +1306,7 @@ bool AITriggerTypeExt::ExtData::ExtraPrerequisitesMet(
     if (!CheckStructureOnMap())                   return false;
     if (!CheckCooldown())                         return false;
     if (!CheckDifficulty(pCallingHouse))          return false;
+    if (!CheckChance())                           return false;
     if (!CheckAllies(pCallingHouse))              return false;
     if (!CheckNeutral())                          return false;
     return true;
@@ -1482,6 +1489,21 @@ bool AITriggerTypeExt::ExtData::CheckCooldown() const
     return since >= Cooldown.Get();
 }
 
+// Probabilistic gate. Rolls the game's SYNCED RNG once per frame (cached so all
+// evaluations in a frame agree) — passes if roll(0..99) < Chance. Sync-safe.
+bool AITriggerTypeExt::ExtData::CheckChance() const
+{
+    if (!Chance.isset()) return true;
+    int const frame = Unsorted::CurrentFrame;
+    if (ChanceRollFrame != frame)
+    {
+        ChanceRollFrame = frame;
+        int const roll = ScenarioClass::Instance->Random.RandomRanged(0, 99);
+        ChanceRollPass = roll < Chance.Get();
+    }
+    return ChanceRollPass;
+}
+
 // Gate on the owning AI house's difficulty index (Hard=0, Normal=1, Easy=2).
 bool AITriggerTypeExt::ExtData::CheckDifficulty(HouseClass* const pHouse) const
 {
@@ -1610,6 +1632,7 @@ void AITriggerTypeExt::ExtData::Serialize(T& Stm)
         .Process(this->LastStartFrame)
         .Process(this->OwnerDifficultyMin)
         .Process(this->OwnerDifficultyMax)
+        .Process(this->Chance)
         ;
 
     SerializeGate(Stm, this->AlliesBuildings);
@@ -2235,6 +2258,15 @@ void AITriggerTypeExt::ExtData::EvaluateAndReport(HouseClass* pOwner, HouseClass
         int const d = pOwner ? static_cast<int>(pOwner->GetAIDifficultyIndex()) : -1;
         BuildScalarDetail("RequiredOwnerDifficulty", d,
             OwnerDifficultyMin, OwnerDifficultyMax, LastCheckReport);
+    }
+
+    // ─── Probabilistic gate (this frame's cached roll: cur=1 pass, cur=0 fail) ──
+    if (Chance.isset())
+    {
+        Nullable<int> noMin;
+        Nullable<int> noMax;
+        BuildScalarDetail("RequiredChance", ChanceRollPass ? 1 : 0,
+            noMin, noMax, LastCheckReport);
     }
 
     // ─── Deferred to follow-up ships ────────────────────────────────────

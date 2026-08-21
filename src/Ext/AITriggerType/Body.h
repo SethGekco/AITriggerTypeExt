@@ -434,6 +434,16 @@ public:
         Nullable<int> OwnerDifficultyMin;
         Nullable<int> OwnerDifficultyMax;
 
+        // Probabilistic gate: passes when a synced random roll (0-99) is below
+        // Chance. Re-rolled at most once per game frame (cached), so every
+        // evaluation of this trigger within one frame agrees. Chance=25 → the
+        // trigger is eligible on ~25% of frames — a throttle on how often it
+        // enters the weighted draw, for wave variety. Uses the game's synced RNG
+        // (desync-safe). The per-frame cache is transient (not serialized).
+        Nullable<int> Chance;
+        mutable int   ChanceRollFrame = -1;
+        mutable bool  ChanceRollPass  = false;
+
         // -----------------------------------------------------------------------
         // ALLIES — buildings
         // -----------------------------------------------------------------------
@@ -759,6 +769,7 @@ public:
         bool CheckStructureOnMap() const;
         bool CheckCooldown() const;
         bool CheckDifficulty(HouseClass* pHouse) const;
+        bool CheckChance() const;
         bool CheckAllies(HouseClass* pCallingHouse) const;
         bool CheckNeutral() const;
         bool CheckElapsedTime() const;
