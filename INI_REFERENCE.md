@@ -341,6 +341,15 @@ The reactive-defense signal: fire a defensive/recall wave the moment the base
 takes fire. Never-attacked houses never pass. Detail report:
 `RequiredOwnerUnderAttack(<frames-since>)` compared against the window as a cap.
 
+`RequiredEnemyUnderAttackWithin` is the offensive counterpart — passes when the
+**resolved enemy** was hit within N frames (e.g. by an ally). "Pile on while
+they're already fighting a fire elsewhere."
+```ini
+RequiredEnemyUnderAttackWithin=150
+```
+No single enemy resolved (`Any`/`All`) or an un-attacked enemy → fails. Detail
+report: `RequiredEnemyUnderAttack(<frames-since>)`.
+
 ### Endgame — how many enemies remain?
 
 `RequiredEnemyHousesAliveMin` / `RequiredEnemyHousesAliveMax` gate on the count of

@@ -522,6 +522,7 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     ReadNullableInt(exINI, section, "RequiredOwnerUnderAttackWithin", OwnerUnderAttackWithin);
     ReadNullableInt(exINI, section, "RequiredEnemyHousesAliveMin",   EnemyHousesAliveMin);
     ReadNullableInt(exINI, section, "RequiredEnemyHousesAliveMax",   EnemyHousesAliveMax);
+    ReadNullableInt(exINI, section, "RequiredEnemyUnderAttackWithin", EnemyUnderAttackWithin);
 
     // -----------------------------------------------------------------------
     // Allies
@@ -1346,6 +1347,7 @@ bool AITriggerTypeExt::ExtData::ExtraPrerequisitesMet(
     if (!CheckChance())                           return false;
     if (!CheckOwnerUnderAttack(pCallingHouse))    return false;
     if (!CheckEnemyHousesAlive(pCallingHouse))    return false;
+    if (!CheckEnemyUnderAttack(pCallingHouse, pTargetHouse)) return false;
     if (!CheckAllies(pCallingHouse))              return false;
     if (!CheckNeutral())                          return false;
     return true;
@@ -1565,6 +1567,17 @@ bool AITriggerTypeExt::ExtData::CheckEnemyHousesAlive(HouseClass* const pOwner) 
     return true;
 }
 
+// Passes if the resolved enemy was attacked within the last N frames.
+bool AITriggerTypeExt::ExtData::CheckEnemyUnderAttack(
+    HouseClass* const pCallingHouse, HouseClass* const pTargetHouse) const
+{
+    if (!EnemyUnderAttackWithin.isset()) return true;
+    auto const pEnemy = ResolveTargetHouse(pCallingHouse, pTargetHouse);
+    if (!pEnemy) return false;              // no single enemy resolved
+    if (pEnemy->LATime <= 0) return false;  // enemy never attacked
+    return (Unsorted::CurrentFrame - pEnemy->LATime) <= EnemyUnderAttackWithin.Get();
+}
+
 // Probabilistic gate. Rolls the game's SYNCED RNG once per frame (cached so all
 // evaluations in a frame agree) — passes if roll(0..99) < Chance. Sync-safe.
 bool AITriggerTypeExt::ExtData::CheckChance() const
@@ -1712,6 +1725,7 @@ void AITriggerTypeExt::ExtData::Serialize(T& Stm)
         .Process(this->OwnerUnderAttackWithin)
         .Process(this->EnemyHousesAliveMin)
         .Process(this->EnemyHousesAliveMax)
+        .Process(this->EnemyUnderAttackWithin)
         ;
 
     SerializeGate(Stm, this->AlliesBuildings);
@@ -2492,6 +2506,16 @@ void AITriggerTypeExt::ExtData::EvaluateAndReport(HouseClass* pOwner, HouseClass
         int const n = CountEnemyHousesAlive(pOwner);
         BuildScalarDetail("RequiredEnemyHousesAlive", n,
             EnemyHousesAliveMin, EnemyHousesAliveMax, LastCheckReport);
+    }
+
+    // ─── Enemy under attack (frames since the enemy was last hit) ───────
+    if (EnemyUnderAttackWithin.isset())
+    {
+        int const since = (pEnemy && pEnemy->LATime > 0)
+            ? (Unsorted::CurrentFrame - pEnemy->LATime) : 999999;
+        Nullable<int> noMin;
+        BuildScalarDetail("RequiredEnemyUnderAttack", since,
+            noMin, EnemyUnderAttackWithin, LastCheckReport);
     }
 
     // ─── Deferred to follow-up ships ────────────────────────────────────

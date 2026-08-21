@@ -457,6 +457,11 @@ public:
         Nullable<int> EnemyHousesAliveMin;
         Nullable<int> EnemyHousesAliveMax;
 
+        // Reactive (offensive): is the resolved enemy under attack right now (by
+        // anyone — e.g. an ally of ours)? Passes when the enemy's LATime is within
+        // this many frames. "Pile on while they're already putting out a fire."
+        Nullable<int> EnemyUnderAttackWithin;
+
         // -----------------------------------------------------------------------
         // ALLIES — buildings
         // -----------------------------------------------------------------------
@@ -785,6 +790,7 @@ public:
         bool CheckChance() const;
         bool CheckOwnerUnderAttack(HouseClass* pHouse) const;
         bool CheckEnemyHousesAlive(HouseClass* pOwner) const;
+        bool CheckEnemyUnderAttack(HouseClass* pCallingHouse, HouseClass* pTargetHouse) const;
         bool CheckAllies(HouseClass* pCallingHouse) const;
         bool CheckNeutral() const;
         bool CheckElapsedTime() const;
