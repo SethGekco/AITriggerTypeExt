@@ -398,6 +398,34 @@ public:
         Nullable<int> BaseDistanceMin;
         Nullable<int> BaseDistanceMax;
 
+        // Credit momentum: net change in a house's Balance over the last
+        // CreditsRateWindow frames (signed). Positive = gaining (harvesting /
+        // booming), negative = spending/bleeding. "Strike while the enemy just
+        // sank its cash into a big purchase" (EnemyMax negative) or "harass a
+        // booming economy" (EnemyMin positive). Owner + enemy variants.
+        // Sampled live per house per frame; not serialized (a few-second warmup
+        // after load). Window default 150 frames (~10s).
+        Nullable<int> OwnerCreditsRateMin;
+        Nullable<int> OwnerCreditsRateMax;
+        Nullable<int> EnemyCreditsRateMin;
+        Nullable<int> EnemyCreditsRateMax;
+        Nullable<int> CreditsRateWindow;
+
+        // Global structure detection: total count, across ALL houses on the map,
+        // of any listed BuildingType. "Only fire while a nuke silo exists
+        // somewhere" (Min=1) regardless of who owns it. Complements the per-house
+        // Owner/Enemy building gates.
+        std::vector<BuildingTypeClass*> StructureOnMapTypes;
+        Nullable<int> StructureOnMapMin;
+        Nullable<int> StructureOnMapMax;
+
+        // Per-trigger dispatch cooldown: this trigger cannot pass again until at
+        // least Cooldown frames after it last actually created a team (stamped in
+        // the Start lifecycle event). Pacing control so a trigger doesn't spam.
+        // LastStartFrame persists across save/load.
+        Nullable<int> Cooldown;
+        int           LastStartFrame = -1;
+
         // -----------------------------------------------------------------------
         // ALLIES — buildings
         // -----------------------------------------------------------------------
@@ -719,6 +747,9 @@ public:
         bool CheckDPSRatio(HouseClass* pCallingHouse, HouseClass* pTargetHouse) const;
         bool CheckTeamRangeRatio(HouseClass* pCallingHouse, HouseClass* pTargetHouse) const;
         bool CheckBaseDistance(HouseClass* pCallingHouse, HouseClass* pTargetHouse) const;
+        bool CheckCreditsRate(HouseClass* pCallingHouse, HouseClass* pTargetHouse) const;
+        bool CheckStructureOnMap() const;
+        bool CheckCooldown() const;
         bool CheckAllies(HouseClass* pCallingHouse) const;
         bool CheckNeutral() const;
         bool CheckElapsedTime() const;

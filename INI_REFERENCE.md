@@ -251,6 +251,53 @@ single enemy resolves (`Any`/`All` modes) or a base center is unset, distance is
 `0`, which trivially satisfies `Min`. Shows in the detail report as
 `RequiredBaseDistance(<cells>):min,max`.
 
+### Economy — credit momentum
+
+`RequiredOwnerCreditsRate*` / `RequiredEnemyCreditsRate*` gate on the **net change
+in a house's credit Balance over the last `RequiredCreditsRateWindow` frames**
+(default 150 ≈ 10s). The value is *signed*: positive = the house is gaining
+(harvesting / booming), negative = spending or bleeding.
+```ini
+RequiredEnemyCreditsRateMax=-800     ; enemy just sank 800+ into a big purchase
+RequiredEnemyCreditsRateMin=-99999   ; (lower bound optional)
+RequiredCreditsRateWindow=150        ; measured over ~10 seconds
+```
+Uses: "strike right after the enemy empties its bank on a superweapon/expansion"
+(`EnemyMax` negative), or "harass a booming economy before it snowballs"
+(`RequiredEnemyCreditsRateMin=1000`). Owner variants let a house wait until its
+*own* income recovers. The rate is sampled live per house; it reads `0` for the
+first window after a save/load (warmup) and is **not** serialized. Enemy uses the
+`TargetHouseMode`-resolved house. Detail report: `RequiredOwnerCreditsRate(<n>)`,
+`RequiredEnemyCreditsRate(<n>)`.
+
+### Detection — a structure exists on the map
+
+`RequiredStructureOnMap` gates on the **total count, across every house on the
+map, of any listed BuildingType** — regardless of owner. `-1` max = uncapped.
+```ini
+RequiredStructureOnMap=NAMISL,GATECH   ; nuke silo OR tech center...
+RequiredStructureOnMapMin=1            ; ...at least one exists anywhere
+RequiredStructureOnMapMax=-1
+```
+Complements the per-house Owner/Enemy building gates: use this for
+"something exists on the battlefield" logic ("react while any nuke silo stands",
+"only run this while a neutral tech building is still capturable"). Detail
+report: `RequiredStructureOnMap(<count>):min,max`.
+
+### Pacing — per-trigger dispatch cooldown
+
+`RequiredCooldown` blocks a trigger from passing again until at least `Cooldown`
+frames have elapsed since it **last actually created a team** (stamped on the
+`Start` lifecycle event, so it counts real dispatches, not draw wins). 15 frames
+≈ 1 second.
+```ini
+RequiredCooldown=1800    ; this trigger can re-fire at most once every ~2 minutes
+```
+Stops a high-weight trigger from spamming the same wave back-to-back and gives
+other triggers room in the rotation. `LastStartFrame` persists across save/load.
+Before the first dispatch there is no cooldown (passes freely). Detail report:
+`RequiredCooldown(<frames-since>)` — compared against the cooldown as a floor.
+
 **Power field sign convention:**
 - Positive = surplus (e.g. `100` means at least 100 units of surplus)
 - `0` = must not be in deficit

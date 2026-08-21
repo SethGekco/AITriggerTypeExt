@@ -17,6 +17,8 @@
 #include <BulletTypeClass.h>
 #include <WarheadTypeClass.h>
 
+#include <deque>
+
 // ============================================================================
 // Static member definitions
 // ============================================================================
@@ -466,6 +468,15 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     ReadDPSLock    (exINI, section, "RequiredTeamRangeRatioLock",   TeamRangeRatioLock);
     ReadNullableInt(exINI, section, "RequiredBaseDistanceMin",      BaseDistanceMin);
     ReadNullableInt(exINI, section, "RequiredBaseDistanceMax",      BaseDistanceMax);
+    ReadNullableInt(exINI, section, "RequiredOwnerCreditsRateMin",  OwnerCreditsRateMin);
+    ReadNullableInt(exINI, section, "RequiredOwnerCreditsRateMax",  OwnerCreditsRateMax);
+    ReadNullableInt(exINI, section, "RequiredEnemyCreditsRateMin",  EnemyCreditsRateMin);
+    ReadNullableInt(exINI, section, "RequiredEnemyCreditsRateMax",  EnemyCreditsRateMax);
+    ReadNullableInt(exINI, section, "RequiredCreditsRateWindow",    CreditsRateWindow);
+    ReadBuildingTypeList(exINI, section, "RequiredStructureOnMap",  StructureOnMapTypes);
+    ReadNullableInt(exINI, section, "RequiredStructureOnMapMin",    StructureOnMapMin);
+    ReadNullableInt(exINI, section, "RequiredStructureOnMapMax",    StructureOnMapMax);
+    ReadNullableInt(exINI, section, "RequiredCooldown",             Cooldown);
 
     // -----------------------------------------------------------------------
     // Allies
@@ -1283,6 +1294,9 @@ bool AITriggerTypeExt::ExtData::ExtraPrerequisitesMet(
     if (!CheckDPSRatio(pCallingHouse, pTargetHouse)) return false;
     if (!CheckTeamRangeRatio(pCallingHouse, pTargetHouse)) return false;
     if (!CheckBaseDistance(pCallingHouse, pTargetHouse)) return false;
+    if (!CheckCreditsRate(pCallingHouse, pTargetHouse)) return false;
+    if (!CheckStructureOnMap())                   return false;
+    if (!CheckCooldown())                         return false;
     if (!CheckAllies(pCallingHouse))              return false;
     if (!CheckNeutral())                          return false;
     return true;
@@ -1378,6 +1392,91 @@ bool AITriggerTypeExt::ExtData::CheckBaseDistance(
         && dist > BaseDistanceMax.Get())
         return false;
     return true;
+}
+
+// Net change in a house's Balance over the last `window` frames (signed).
+// Keeps a small per-house rolling sample of (frame, balance), one sample per
+// frame, pruned to the window. Static/transient — rebuilt after save/load, so
+// the rate reads 0 for the first `window` frames of a fresh session (warmup).
+static int ComputeCreditsRate(HouseClass* const pHouse, int const window)
+{
+    if (!pHouse || window <= 0) return 0;
+
+    static std::map<HouseClass*, std::deque<std::pair<int, int>>> samples;
+
+    int const frame = Unsorted::CurrentFrame;
+    int const bal   = pHouse->Balance;
+    auto& dq = samples[pHouse];
+
+    if (dq.empty() || dq.back().first != frame)
+        dq.emplace_back(frame, bal);
+    while (dq.size() > 1 && dq.front().first < frame - window)
+        dq.pop_front();
+
+    return bal - dq.front().second;   // current − oldest-in-window
+}
+
+// Gate on credit momentum for the owner and/or the resolved enemy.
+bool AITriggerTypeExt::ExtData::CheckCreditsRate(
+    HouseClass* const pCallingHouse, HouseClass* const pTargetHouse) const
+{
+    bool const wantOwner = OwnerCreditsRateMin.isset() || OwnerCreditsRateMax.isset();
+    bool const wantEnemy = EnemyCreditsRateMin.isset() || EnemyCreditsRateMax.isset();
+    if (!wantOwner && !wantEnemy) return true;
+
+    int const window = CreditsRateWindow.Get(150);
+
+    if (wantOwner && pCallingHouse)
+    {
+        int const rate = ComputeCreditsRate(pCallingHouse, window);
+        if (OwnerCreditsRateMin.isset() && rate < OwnerCreditsRateMin.Get()) return false;
+        if (OwnerCreditsRateMax.isset() && rate > OwnerCreditsRateMax.Get()) return false;
+    }
+    if (wantEnemy)
+    {
+        auto const pEnemy = ResolveTargetHouse(pCallingHouse, pTargetHouse);
+        int const rate = pEnemy ? ComputeCreditsRate(pEnemy, window) : 0;
+        if (EnemyCreditsRateMin.isset() && rate < EnemyCreditsRateMin.Get()) return false;
+        if (EnemyCreditsRateMax.isset() && rate > EnemyCreditsRateMax.Get()) return false;
+    }
+    return true;
+}
+
+// Count all live buildings on the map (any house) whose type is in the list.
+static int CountStructuresOnMap(const std::vector<BuildingTypeClass*>& types)
+{
+    if (types.empty()) return 0;
+    int count = 0;
+    for (auto const pBld : BuildingClass::Array)
+    {
+        if (!pBld) continue;
+        for (auto const pType : types)
+            if (pBld->Type == pType) { ++count; break; }
+    }
+    return count;
+}
+
+// Gate on the global count of the listed structure types existing on the map.
+bool AITriggerTypeExt::ExtData::CheckStructureOnMap() const
+{
+    if (StructureOnMapTypes.empty()) return true;
+    if (!StructureOnMapMin.isset() && !StructureOnMapMax.isset()) return true;
+
+    int const count = CountStructuresOnMap(StructureOnMapTypes);
+    if (StructureOnMapMin.isset() && count < StructureOnMapMin.Get()) return false;
+    if (StructureOnMapMax.isset() && StructureOnMapMax.Get() != -1
+        && count > StructureOnMapMax.Get()) return false;
+    return true;
+}
+
+// Veto until at least Cooldown frames have passed since this trigger last
+// created a team (LastStartFrame, stamped in the Start lifecycle event).
+bool AITriggerTypeExt::ExtData::CheckCooldown() const
+{
+    if (!Cooldown.isset()) return true;
+    if (LastStartFrame < 0) return true;    // never dispatched → no cooldown yet
+    int const since = Unsorted::CurrentFrame - LastStartFrame;
+    return since >= Cooldown.Get();
 }
 
 // Owner-vs-enemy DPS ratio (percentage; 200 = owner has 2.0x the enemy DPS).
@@ -1484,6 +1583,16 @@ void AITriggerTypeExt::ExtData::Serialize(T& Stm)
         .Process(this->TeamRangeRatioLock)
         .Process(this->BaseDistanceMin)
         .Process(this->BaseDistanceMax)
+        .Process(this->OwnerCreditsRateMin)
+        .Process(this->OwnerCreditsRateMax)
+        .Process(this->EnemyCreditsRateMin)
+        .Process(this->EnemyCreditsRateMax)
+        .Process(this->CreditsRateWindow)
+        .Process(this->StructureOnMapTypes)
+        .Process(this->StructureOnMapMin)
+        .Process(this->StructureOnMapMax)
+        .Process(this->Cooldown)
+        .Process(this->LastStartFrame)
         ;
 
     SerializeGate(Stm, this->AlliesBuildings);
@@ -1728,6 +1837,7 @@ void AITriggerTypeExt::EmitDebugStart(
     ExtData* pExt, AITriggerTypeClass* pThis)
 {
     if (!pExt || !pThis) return;
+    pExt->LastStartFrame = Unsorted::CurrentFrame;   // stamp for RequiredCooldown
     EmitLifecycle("Start", pThis,
         pExt->DebugMessageDisplay_Start, pExt->DebugLog_Start);
 }
@@ -2067,6 +2177,39 @@ void AITriggerTypeExt::ExtData::EvaluateAndReport(HouseClass* pOwner, HouseClass
         }
         BuildScalarDetail("RequiredBaseDistance", dist,
             BaseDistanceMin, BaseDistanceMax, LastCheckReport);
+    }
+
+    // ─── Credit momentum (net Balance change over the window) ───────────
+    if (OwnerCreditsRateMin.isset() || OwnerCreditsRateMax.isset())
+    {
+        int const rate = ComputeCreditsRate(pOwner, CreditsRateWindow.Get(150));
+        BuildScalarDetail("RequiredOwnerCreditsRate", rate,
+            OwnerCreditsRateMin, OwnerCreditsRateMax, LastCheckReport);
+    }
+    if (EnemyCreditsRateMin.isset() || EnemyCreditsRateMax.isset())
+    {
+        int const rate = pEnemy ? ComputeCreditsRate(pEnemy, CreditsRateWindow.Get(150)) : 0;
+        BuildScalarDetail("RequiredEnemyCreditsRate", rate,
+            EnemyCreditsRateMin, EnemyCreditsRateMax, LastCheckReport);
+    }
+
+    // ─── Global structure detection ─────────────────────────────────────
+    if (!StructureOnMapTypes.empty()
+        && (StructureOnMapMin.isset() || StructureOnMapMax.isset()))
+    {
+        int const count = CountStructuresOnMap(StructureOnMapTypes);
+        BuildScalarDetail("RequiredStructureOnMap", count,
+            StructureOnMapMin, StructureOnMapMax, LastCheckReport);
+    }
+
+    // ─── Dispatch cooldown (frames since this trigger last started) ─────
+    if (Cooldown.isset())
+    {
+        int const since = (LastStartFrame < 0)
+            ? 999999 : (Unsorted::CurrentFrame - LastStartFrame);
+        Nullable<int> noMax;   // cooldown is a floor only
+        BuildScalarDetail("RequiredCooldown", since,
+            Cooldown, noMax, LastCheckReport);
     }
 
     // ─── Deferred to follow-up ships ────────────────────────────────────
