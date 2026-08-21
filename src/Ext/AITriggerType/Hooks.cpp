@@ -383,3 +383,22 @@ DEFINE_HOOK(0x41FE20, AITriggerTypeClass_RegisterFailure_Destroyed, 0x8)
 // (a [TeamTypeID.AIExt] sidecar, separate from the lifecycle system). Left
 // documented, not hooked, until that feature is scheduled.
 // ============================================================================
+
+// ============================================================================
+// SCRIPTSWITCH — TeamClass::Update, 0x6E9443, size 8
+//
+// Per-team update tick. Antares (TeamClass_Update) and Phobos (TeamClass_AI)
+// both hook this exact address at size 0x8 and REDIRECT (they arbitrate script
+// actions). We co-hook as a pure SIDE EFFECT and return 0 (fall through) — so
+// Syringe chains us with them regardless of load order and their control flow
+// wins. ESI = TeamClass* here (same register Antares reads at this address).
+// EvaluateScriptSwitch is a no-op unless the team's TeamType opted in with a
+// [TeamTypeID.AIExt] ScriptSwitch rule, so this is dormant on stock setups.
+// ============================================================================
+
+DEFINE_HOOK(0x6E9443, TeamClass_Update_ScriptSwitch, 0x8)
+{
+    GET(TeamClass*, pTeam, ESI);
+    AITriggerTypeExt::EvaluateScriptSwitch(pTeam);
+    return 0;
+}

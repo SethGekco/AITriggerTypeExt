@@ -23,6 +23,7 @@
 #include <ScriptTypeClass.h>
 
 #include <deque>
+#include <cstdlib>
 
 // ============================================================================
 // Static member definitions
@@ -158,6 +159,37 @@ static void ReadTechnoTypeList(
 // ---------------------------------------------------------------------------
 static std::map<std::string, std::vector<TechnoTypeClass*>> g_DPSGroups;
 static bool g_DPSGroupsParsed = false;
+
+// ---------------------------------------------------------------------------
+// ScriptSwitch — reactive per-team script swapping. A TeamType may declare, in
+// its [TeamTypeID.AIExt] sidecar, indexed rules that swap the live team's script
+// when battlefield conditions flip:
+//   [SomeTeam.AIExt]
+//   ScriptSwitch.0.Script=DEFEND_SCRIPT
+//   ScriptSwitch.0.RequiredOwnerPowerMax=-1        ; owner in power deficit
+//   ScriptSwitch.0.RequiredStructureOnMap=NAMISL   ; ...and a nuke silo exists
+//   ScriptSwitch.0.RequiredStructureOnMapMin=1
+//   ScriptSwitch.0.DebugLog=switching to defend
+//   ScriptSwitch.0.DebugMessageDisplay=NOSTR:DEFEND
+// Rules are scanned .0,.1,... until a rule with no Script key. First rule whose
+// conditions all pass wins; if the team isn't already on that script it swaps.
+// Dormant (zero effect) unless a TeamType opts in. Parsed once, globally.
+// ---------------------------------------------------------------------------
+struct ScriptSwitchRule
+{
+    ScriptTypeClass* NewScript = nullptr;
+    bool hasPowerMin = false;   int powerMin = 0;
+    bool hasPowerMax = false;   int powerMax = 0;
+    std::vector<BuildingTypeClass*> structTypes;
+    int  structMin = 1;         // used only when structTypes non-empty
+    bool hasElapsedMin = false; int elapsedMin = 0;
+    bool hasElapsedMax = false; int elapsedMax = 0;
+    std::string debugLog;
+    std::string debugDisplay;
+};
+static std::map<TeamTypeClass*, std::vector<ScriptSwitchRule>> g_ScriptSwitch;
+static bool g_ScriptSwitchParsed = false;
+static void ParseScriptSwitch(CCINIClass* pINI);   // defined below
 
 static TechnoTypeClass* FindTechnoTypeByID(const char* id)
 {
@@ -424,6 +456,7 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     ReadNullableInt(exINI, section, "RequiredOwnerDPSMax",          OwnerDPSMax);
     ReadDPSLock    (exINI, section, "RequiredOwnerDPSLock",         OwnerDPSLock);
     if (!g_DPSGroupsParsed) { ParseDPSGroups(pINI); g_DPSGroupsParsed = true; }
+    if (!g_ScriptSwitchParsed) { ParseScriptSwitch(pINI); g_ScriptSwitchParsed = true; }
     ReadDPSTypeList(exINI, section, "RequiredOwnerDPSTypes",     OwnerDPSTypes);
     ReadDPSArmor   (exINI, section, "RequiredOwnerDPSArmor",        OwnerDPSArmor);
 
@@ -1912,6 +1945,130 @@ void AITriggerTypeExt::EmitDebugSelected(
     if (!pExt || !pThis) return;
     EmitLifecycle("Selected", pThis,
         pExt->DebugMessageDisplay_Selected, pExt->DebugLog_Selected);
+}
+
+// ============================================================================
+// ScriptSwitch — parse, debug, and runtime evaluation
+// ============================================================================
+
+// One-time sweep: read every TeamType's [ID.AIExt] ScriptSwitch.<N>.* rules.
+static void ParseScriptSwitch(CCINIClass* const pINI)
+{
+    g_ScriptSwitch.clear();
+    if (!pINI) return;
+
+    char section[64], key[96], buf[192];
+
+    for (auto const pTT : TeamTypeClass::Array)
+    {
+        if (!pTT) continue;
+        snprintf(section, sizeof(section), "%s.AIExt", pTT->ID);
+
+        std::vector<ScriptSwitchRule> rules;
+        for (int i = 0; ; ++i)
+        {
+            snprintf(key, sizeof(key), "ScriptSwitch.%d.Script", i);
+            if (pINI->ReadString(section, key, "", buf, sizeof(buf)) <= 0)
+                break;   // no rule at this index → done
+
+            auto const pScript = ScriptTypeClass::FindOrAllocate(buf);
+            if (!pScript) continue;
+
+            ScriptSwitchRule r;
+            r.NewScript = pScript;
+
+            snprintf(key, sizeof(key), "ScriptSwitch.%d.RequiredOwnerPowerMin", i);
+            if (pINI->ReadString(section, key, "", buf, sizeof(buf)) > 0) { r.hasPowerMin = true; r.powerMin = atoi(buf); }
+            snprintf(key, sizeof(key), "ScriptSwitch.%d.RequiredOwnerPowerMax", i);
+            if (pINI->ReadString(section, key, "", buf, sizeof(buf)) > 0) { r.hasPowerMax = true; r.powerMax = atoi(buf); }
+
+            snprintf(key, sizeof(key), "ScriptSwitch.%d.RequiredStructureOnMap", i);
+            if (pINI->ReadString(section, key, "", buf, sizeof(buf)) > 0)
+            {
+                char* ctx = nullptr;
+                for (char* tok = strtok_s(buf, ",", &ctx); tok; tok = strtok_s(nullptr, ",", &ctx))
+                {
+                    while (*tok == ' ' || *tok == '\t') ++tok;
+                    char* end = tok + strlen(tok);
+                    while (end > tok && (end[-1] == ' ' || end[-1] == '\t')) *(--end) = 0;
+                    if (auto const pB = BuildingTypeClass::Find(tok)) r.structTypes.push_back(pB);
+                }
+            }
+            snprintf(key, sizeof(key), "ScriptSwitch.%d.RequiredStructureOnMapMin", i);
+            if (pINI->ReadString(section, key, "", buf, sizeof(buf)) > 0) r.structMin = atoi(buf);
+
+            snprintf(key, sizeof(key), "ScriptSwitch.%d.RequiredElapsedTimeMin", i);
+            if (pINI->ReadString(section, key, "", buf, sizeof(buf)) > 0) { r.hasElapsedMin = true; r.elapsedMin = atoi(buf); }
+            snprintf(key, sizeof(key), "ScriptSwitch.%d.RequiredElapsedTimeMax", i);
+            if (pINI->ReadString(section, key, "", buf, sizeof(buf)) > 0) { r.hasElapsedMax = true; r.elapsedMax = atoi(buf); }
+
+            snprintf(key, sizeof(key), "ScriptSwitch.%d.DebugLog", i);
+            if (pINI->ReadString(section, key, "", buf, sizeof(buf)) > 0) r.debugLog = buf;
+            snprintf(key, sizeof(key), "ScriptSwitch.%d.DebugMessageDisplay", i);
+            if (pINI->ReadString(section, key, "", buf, sizeof(buf)) > 0) r.debugDisplay = buf;
+
+            rules.push_back(std::move(r));
+        }
+
+        if (!rules.empty())
+            g_ScriptSwitch[pTT] = std::move(rules);
+    }
+}
+
+static void EmitScriptSwitchDebug(TeamClass* const pTeam, const ScriptSwitchRule& r)
+{
+    auto const mode = AITriggerTypeExt::GetDebugMode();
+    if (mode == AITriggerTypeExt::DebugDisplayMode::Off) return;
+
+    if ((mode == AITriggerTypeExt::DebugDisplayMode::Overlay
+            || mode == AITriggerTypeExt::DebugDisplayMode::Both)
+        && !r.debugDisplay.empty())
+    {
+        const wchar_t* pMsg = ResolveDebugText(r.debugDisplay);
+        if (pMsg && *pMsg)
+            MessageListClass::Instance.PrintMessage(pMsg);
+    }
+    if ((mode == AITriggerTypeExt::DebugDisplayMode::Log
+            || mode == AITriggerTypeExt::DebugDisplayMode::Both)
+        && !r.debugLog.empty())
+    {
+        Debug::Log("[AIExt ScriptSwitch] %s -> %s: %s\n",
+            pTeam->Type->ID, r.NewScript->ID, r.debugLog.c_str());
+    }
+}
+
+// Runtime — called each TeamClass update. Swaps the team's live script to the
+// first rule whose conditions all pass (if not already on it). Fully guarded;
+// no-op when the team's TeamType has no rules.
+void AITriggerTypeExt::EvaluateScriptSwitch(TeamClass* const pTeam)
+{
+    if (g_ScriptSwitch.empty()) return;
+    if (!pTeam || !pTeam->Type || !pTeam->Owner || !pTeam->CurrentScript) return;
+
+    auto const it = g_ScriptSwitch.find(pTeam->Type);
+    if (it == g_ScriptSwitch.end()) return;
+
+    HouseClass* const pOwner = pTeam->Owner;
+    int const netPower = pOwner->PowerOutput - pOwner->PowerDrain;
+    int const frame    = Unsorted::CurrentFrame;
+
+    for (auto const& r : it->second)
+    {
+        if (r.hasPowerMin && netPower < r.powerMin) continue;
+        if (r.hasPowerMax && r.powerMax != -1 && netPower > r.powerMax) continue;
+        if (!r.structTypes.empty() && CountStructuresOnMap(r.structTypes) < r.structMin) continue;
+        if (r.hasElapsedMin && frame < r.elapsedMin) continue;
+        if (r.hasElapsedMax && r.elapsedMax != -1 && frame > r.elapsedMax) continue;
+
+        // First matching rule wins. Swap only if not already on that script.
+        if (pTeam->CurrentScript->Type != r.NewScript)
+        {
+            pTeam->CurrentScript->Type = r.NewScript;
+            pTeam->CurrentScript->CurrentMission = 0;   // restart at action 0
+            EmitScriptSwitchDebug(pTeam, r);
+        }
+        return;
+    }
 }
 
 // Replace vanilla's global weight delta for THIS trigger. Runs at the hook

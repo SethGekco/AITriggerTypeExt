@@ -69,6 +69,8 @@
 #include <Utilities/Container.h>
 #include <Utilities/TemplateDef.h>
 
+class TeamClass;   // for the ScriptSwitch runtime hook (TeamClass::Update)
+
 // ============================================================================
 // TargetHouseMode — controls which enemy house the enemy checks apply to
 // ============================================================================
@@ -898,6 +900,11 @@ public:
     static void EmitDebugDeleted(ExtData* pExt, AITriggerTypeClass* pThis);
     static void EmitDebugReject(ExtData* pExt, AITriggerTypeClass* pThis);
     static void EmitDebugSelected(ExtData* pExt, AITriggerTypeClass* pThis);
+
+    // ScriptSwitch — reactive per-team script swapping. Called each TeamClass
+    // update (0x6E9443). Dormant unless the team's TeamType has a
+    // [TeamTypeID.AIExt] ScriptSwitch.<N>.* rule set.
+    static void EvaluateScriptSwitch(TeamClass* pTeam);
 
     // Weight adjustments — called from the RegisterSuccess (success=true) /
     // RegisterFailure (success=false) hooks, BEFORE vanilla runs.
