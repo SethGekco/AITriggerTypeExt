@@ -426,6 +426,14 @@ public:
         Nullable<int> Cooldown;
         int           LastStartFrame = -1;
 
+        // Difficulty gate on the owning AI house's difficulty INDEX. Note the
+        // engine index is reversed: Hard=0, Normal=1, Easy=2. So "hard only" is
+        // Min=0,Max=0; "normal or harder" is Max=1; "easy only" is Min=2.
+        // Lets a modder ship difficulty-specific triggers (harder AI gets the
+        // scary waves). -1 max = uncapped.
+        Nullable<int> OwnerDifficultyMin;
+        Nullable<int> OwnerDifficultyMax;
+
         // -----------------------------------------------------------------------
         // ALLIES — buildings
         // -----------------------------------------------------------------------
@@ -750,6 +758,7 @@ public:
         bool CheckCreditsRate(HouseClass* pCallingHouse, HouseClass* pTargetHouse) const;
         bool CheckStructureOnMap() const;
         bool CheckCooldown() const;
+        bool CheckDifficulty(HouseClass* pHouse) const;
         bool CheckAllies(HouseClass* pCallingHouse) const;
         bool CheckNeutral() const;
         bool CheckElapsedTime() const;

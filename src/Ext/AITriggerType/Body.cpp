@@ -477,6 +477,8 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     ReadNullableInt(exINI, section, "RequiredStructureOnMapMin",    StructureOnMapMin);
     ReadNullableInt(exINI, section, "RequiredStructureOnMapMax",    StructureOnMapMax);
     ReadNullableInt(exINI, section, "RequiredCooldown",             Cooldown);
+    ReadNullableInt(exINI, section, "RequiredOwnerDifficultyMin",   OwnerDifficultyMin);
+    ReadNullableInt(exINI, section, "RequiredOwnerDifficultyMax",   OwnerDifficultyMax);
 
     // -----------------------------------------------------------------------
     // Allies
@@ -1297,6 +1299,7 @@ bool AITriggerTypeExt::ExtData::ExtraPrerequisitesMet(
     if (!CheckCreditsRate(pCallingHouse, pTargetHouse)) return false;
     if (!CheckStructureOnMap())                   return false;
     if (!CheckCooldown())                         return false;
+    if (!CheckDifficulty(pCallingHouse))          return false;
     if (!CheckAllies(pCallingHouse))              return false;
     if (!CheckNeutral())                          return false;
     return true;
@@ -1479,6 +1482,18 @@ bool AITriggerTypeExt::ExtData::CheckCooldown() const
     return since >= Cooldown.Get();
 }
 
+// Gate on the owning AI house's difficulty index (Hard=0, Normal=1, Easy=2).
+bool AITriggerTypeExt::ExtData::CheckDifficulty(HouseClass* const pHouse) const
+{
+    if (!OwnerDifficultyMin.isset() && !OwnerDifficultyMax.isset()) return true;
+    if (!pHouse) return true;
+    int const d = static_cast<int>(pHouse->GetAIDifficultyIndex());
+    if (OwnerDifficultyMin.isset() && d < OwnerDifficultyMin.Get()) return false;
+    if (OwnerDifficultyMax.isset() && OwnerDifficultyMax.Get() != -1
+        && d > OwnerDifficultyMax.Get()) return false;
+    return true;
+}
+
 // Owner-vs-enemy DPS ratio (percentage; 200 = owner has 2.0x the enemy DPS).
 // Cross-multiplied to avoid division and handle a zero-DPS enemy cleanly:
 //   Min: ownerDPS*100 >= Min*enemyDPS      (enemy 0 → always passes: dominant)
@@ -1593,6 +1608,8 @@ void AITriggerTypeExt::ExtData::Serialize(T& Stm)
         .Process(this->StructureOnMapMax)
         .Process(this->Cooldown)
         .Process(this->LastStartFrame)
+        .Process(this->OwnerDifficultyMin)
+        .Process(this->OwnerDifficultyMax)
         ;
 
     SerializeGate(Stm, this->AlliesBuildings);
@@ -2210,6 +2227,14 @@ void AITriggerTypeExt::ExtData::EvaluateAndReport(HouseClass* pOwner, HouseClass
         Nullable<int> noMax;   // cooldown is a floor only
         BuildScalarDetail("RequiredCooldown", since,
             Cooldown, noMax, LastCheckReport);
+    }
+
+    // ─── Owner AI difficulty index (Hard=0, Normal=1, Easy=2) ───────────
+    if (OwnerDifficultyMin.isset() || OwnerDifficultyMax.isset())
+    {
+        int const d = pOwner ? static_cast<int>(pOwner->GetAIDifficultyIndex()) : -1;
+        BuildScalarDetail("RequiredOwnerDifficulty", d,
+            OwnerDifficultyMin, OwnerDifficultyMax, LastCheckReport);
     }
 
     // ─── Deferred to follow-up ships ────────────────────────────────────

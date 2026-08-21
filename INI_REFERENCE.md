@@ -298,6 +298,25 @@ other triggers room in the rotation. `LastStartFrame` persists across save/load.
 Before the first dispatch there is no cooldown (passes freely). Detail report:
 `RequiredCooldown(<frames-since>)` — compared against the cooldown as a floor.
 
+### Difficulty — restrict to specific AI difficulties
+
+`RequiredOwnerDifficultyMin` / `RequiredOwnerDifficultyMax` gate on the owning AI
+house's difficulty **index**. The engine index is *reversed*:
+
+| Difficulty | Index |
+|---|---|
+| Hard   | 0 |
+| Normal | 1 |
+| Easy   | 2 |
+
+```ini
+RequiredOwnerDifficultyMin=0
+RequiredOwnerDifficultyMax=0     ; Hard AI only (the scary waves)
+```
+So "Hard only" is `Min=0,Max=0`; "Normal or harder" is `Max=1`; "Easy only" is
+`Min=2`. Lets a mod give tougher AI exclusive access to certain waves/tactics.
+`-1` max = uncapped. Detail report: `RequiredOwnerDifficulty(<index>):min,max`.
+
 **Power field sign convention:**
 - Positive = surplus (e.g. `100` means at least 100 units of surplus)
 - `0` = must not be in deficit
