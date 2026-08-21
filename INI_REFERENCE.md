@@ -659,3 +659,56 @@ Weight_Maximum]`. With debug logging on, each adjustment logs:
 ```
 [AIExt Cascade] Failure MyAerialRush -> OtherAerialRush1 delta -15 weight 80.0 -> 65.0
 ```
+
+---
+
+## ScriptSwitch — reactive per-team script swapping
+
+Unlike everything above (which lives on `[TriggerID.AIExt]` and gates *whether a
+team spawns*), ScriptSwitch lives on the **TeamType** and changes how an
+*already-live* team behaves. It swaps the team's running ScriptType the moment
+battlefield conditions flip — e.g. an attacking team whose base loses power
+peels off to defend.
+
+```ini
+[TeamTypes]
+77=SomeAttackTeam,...
+
+[SomeAttackTeam.AIExt]
+; Rules are scanned .0, .1, .2 … (contiguous) until one has no Script key.
+; The FIRST rule whose conditions ALL pass wins; if the team isn't already on
+; that script, it switches (restarting the new script at action 0).
+
+ScriptSwitch.0.Script=DEFEND_BASE            ; ScriptType ID to switch to (required)
+ScriptSwitch.0.RequiredOwnerPowerMax=0       ; owner not in power surplus (≤ 0 net)
+ScriptSwitch.0.RequiredStructureOnMap=NAMISL ; ...and a nuke silo exists on the map
+ScriptSwitch.0.RequiredStructureOnMapMin=1
+ScriptSwitch.0.DebugLog=power lost — switching to defend
+ScriptSwitch.0.DebugMessageDisplay=NOSTR:DEFEND!
+
+ScriptSwitch.1.Script=REGROUP
+ScriptSwitch.1.RequiredElapsedTimeMin=18000  ; after 20 minutes, always regroup first
+```
+
+**Per-rule conditions (v1 subset):**
+| Key | Meaning |
+|---|---|
+| `Script` | target ScriptType ID (**required**; the rule is skipped without it) |
+| `RequiredOwnerPowerMin` / `Max` | owner net power (Output−Drain) window. `-1` max = uncapped, so use `0` / a negative like `-100` to mean "in deficit". |
+| `RequiredStructureOnMap` + `…Min` | a structure of a listed type exists on the map (any house) |
+| `RequiredElapsedTimeMin` / `Max` | frame window since scenario start (15 frames ≈ 1s) |
+| `DebugLog` / `DebugMessageDisplay` | fired (log / HUD) when this rule actually swaps the script |
+
+**Semantics & notes:**
+- **Opt-in and dormant.** A TeamType with no `ScriptSwitch.*` keys has zero
+  runtime effect — the feature costs nothing on stock setups.
+- **First match wins.** Order rules by priority (most urgent first). Once a rule
+  matches and the team is on its script, later rules aren't considered that tick.
+- **No thrash.** A rule only swaps when the team isn't already on its target
+  script, so a persistently-true condition swaps once and stays.
+- The condition set is intentionally small in v1; it shares the engine's live
+  power / structure / time reads. Broader reuse of the full `Required*`
+  vocabulary (enemy DPS, superweapon readiness, base distance, credit momentum)
+  is the planned next iteration.
+- Evaluated each `TeamClass::Update`; the swap takes effect on the team's next
+  script step.
