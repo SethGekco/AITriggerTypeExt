@@ -446,6 +446,17 @@ public:
         mutable int   ChanceRollFrame = -1;
         mutable bool  ChanceRollPass  = false;
 
+        // Reactive: was the owner attacked recently? Passes when the owner's
+        // last-attacked frame (HouseClass::LATime) is within this many frames of
+        // now — "fire the moment my base is under fire". 15 frames ≈ 1s.
+        Nullable<int> OwnerUnderAttackWithin;
+
+        // Count of enemy houses still in play (not Defeated, not allied, not
+        // neutral, not self). "Go all-in when only one enemy remains" (Max=1),
+        // or "hold the big commitment while ≥2 could gang up" (Min=2).
+        Nullable<int> EnemyHousesAliveMin;
+        Nullable<int> EnemyHousesAliveMax;
+
         // -----------------------------------------------------------------------
         // ALLIES — buildings
         // -----------------------------------------------------------------------
@@ -772,6 +783,8 @@ public:
         bool CheckCooldown() const;
         bool CheckDifficulty(HouseClass* pHouse) const;
         bool CheckChance() const;
+        bool CheckOwnerUnderAttack(HouseClass* pHouse) const;
+        bool CheckEnemyHousesAlive(HouseClass* pOwner) const;
         bool CheckAllies(HouseClass* pCallingHouse) const;
         bool CheckNeutral() const;
         bool CheckElapsedTime() const;

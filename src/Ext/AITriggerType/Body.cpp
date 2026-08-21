@@ -184,6 +184,7 @@ struct ScriptSwitchRule
     int  structMin = 1;         // used only when structTypes non-empty
     bool hasElapsedMin = false; int elapsedMin = 0;
     bool hasElapsedMax = false; int elapsedMax = 0;
+    bool hasUnderAttack = false; int underAttackWithin = 0;
     std::string debugLog;
     std::string debugDisplay;
 };
@@ -518,6 +519,9 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     ReadNullableInt(exINI, section, "RequiredOwnerDifficultyMin",   OwnerDifficultyMin);
     ReadNullableInt(exINI, section, "RequiredOwnerDifficultyMax",   OwnerDifficultyMax);
     ReadNullableInt(exINI, section, "RequiredChance",               Chance);
+    ReadNullableInt(exINI, section, "RequiredOwnerUnderAttackWithin", OwnerUnderAttackWithin);
+    ReadNullableInt(exINI, section, "RequiredEnemyHousesAliveMin",   EnemyHousesAliveMin);
+    ReadNullableInt(exINI, section, "RequiredEnemyHousesAliveMax",   EnemyHousesAliveMax);
 
     // -----------------------------------------------------------------------
     // Allies
@@ -1340,6 +1344,8 @@ bool AITriggerTypeExt::ExtData::ExtraPrerequisitesMet(
     if (!CheckCooldown())                         return false;
     if (!CheckDifficulty(pCallingHouse))          return false;
     if (!CheckChance())                           return false;
+    if (!CheckOwnerUnderAttack(pCallingHouse))    return false;
+    if (!CheckEnemyHousesAlive(pCallingHouse))    return false;
     if (!CheckAllies(pCallingHouse))              return false;
     if (!CheckNeutral())                          return false;
     return true;
@@ -1522,6 +1528,43 @@ bool AITriggerTypeExt::ExtData::CheckCooldown() const
     return since >= Cooldown.Get();
 }
 
+// Reactive: passes if the owner was attacked within the last N frames, read from
+// HouseClass::LATime (the frame of the last attack on this house).
+bool AITriggerTypeExt::ExtData::CheckOwnerUnderAttack(HouseClass* const pHouse) const
+{
+    if (!OwnerUnderAttackWithin.isset()) return true;
+    if (!pHouse) return true;
+    if (pHouse->LATime <= 0) return false;   // never attacked
+    return (Unsorted::CurrentFrame - pHouse->LATime) <= OwnerUnderAttackWithin.Get();
+}
+
+// Count houses still in play that are hostile to pOwner (not self, not defeated,
+// not neutral, not allied).
+static int CountEnemyHousesAlive(HouseClass* const pOwner)
+{
+    if (!pOwner) return 0;
+    int n = 0;
+    for (auto const h : HouseClass::Array)
+    {
+        if (!h || h == pOwner) continue;
+        if (h->Defeated) continue;
+        if (h->IsNeutral()) continue;
+        if (pOwner->IsAlliedWith(h)) continue;
+        ++n;
+    }
+    return n;
+}
+
+bool AITriggerTypeExt::ExtData::CheckEnemyHousesAlive(HouseClass* const pOwner) const
+{
+    if (!EnemyHousesAliveMin.isset() && !EnemyHousesAliveMax.isset()) return true;
+    int const n = CountEnemyHousesAlive(pOwner);
+    if (EnemyHousesAliveMin.isset() && n < EnemyHousesAliveMin.Get()) return false;
+    if (EnemyHousesAliveMax.isset() && EnemyHousesAliveMax.Get() != -1
+        && n > EnemyHousesAliveMax.Get()) return false;
+    return true;
+}
+
 // Probabilistic gate. Rolls the game's SYNCED RNG once per frame (cached so all
 // evaluations in a frame agree) — passes if roll(0..99) < Chance. Sync-safe.
 bool AITriggerTypeExt::ExtData::CheckChance() const
@@ -1666,6 +1709,9 @@ void AITriggerTypeExt::ExtData::Serialize(T& Stm)
         .Process(this->OwnerDifficultyMin)
         .Process(this->OwnerDifficultyMax)
         .Process(this->Chance)
+        .Process(this->OwnerUnderAttackWithin)
+        .Process(this->EnemyHousesAliveMin)
+        .Process(this->EnemyHousesAliveMax)
         ;
 
     SerializeGate(Stm, this->AlliesBuildings);
@@ -2002,6 +2048,9 @@ static void ParseScriptSwitch(CCINIClass* const pINI)
             snprintf(key, sizeof(key), "ScriptSwitch.%d.RequiredElapsedTimeMax", i);
             if (pINI->ReadString(section, key, "", buf, sizeof(buf)) > 0) { r.hasElapsedMax = true; r.elapsedMax = atoi(buf); }
 
+            snprintf(key, sizeof(key), "ScriptSwitch.%d.RequiredOwnerUnderAttackWithin", i);
+            if (pINI->ReadString(section, key, "", buf, sizeof(buf)) > 0) { r.hasUnderAttack = true; r.underAttackWithin = atoi(buf); }
+
             snprintf(key, sizeof(key), "ScriptSwitch.%d.DebugLog", i);
             if (pINI->ReadString(section, key, "", buf, sizeof(buf)) > 0) r.debugLog = buf;
             snprintf(key, sizeof(key), "ScriptSwitch.%d.DebugMessageDisplay", i);
@@ -2059,6 +2108,7 @@ void AITriggerTypeExt::EvaluateScriptSwitch(TeamClass* const pTeam)
         if (!r.structTypes.empty() && CountStructuresOnMap(r.structTypes) < r.structMin) continue;
         if (r.hasElapsedMin && frame < r.elapsedMin) continue;
         if (r.hasElapsedMax && r.elapsedMax != -1 && frame > r.elapsedMax) continue;
+        if (r.hasUnderAttack && (pOwner->LATime <= 0 || (frame - pOwner->LATime) > r.underAttackWithin)) continue;
 
         // First matching rule wins. Swap only if not already on that script.
         if (pTeam->CurrentScript->Type != r.NewScript)
@@ -2424,6 +2474,24 @@ void AITriggerTypeExt::ExtData::EvaluateAndReport(HouseClass* pOwner, HouseClass
         Nullable<int> noMax;
         BuildScalarDetail("RequiredChance", ChanceRollPass ? 1 : 0,
             noMin, noMax, LastCheckReport);
+    }
+
+    // ─── Owner under attack (frames since last hit vs the window) ───────
+    if (OwnerUnderAttackWithin.isset())
+    {
+        int const since = (pOwner && pOwner->LATime > 0)
+            ? (Unsorted::CurrentFrame - pOwner->LATime) : 999999;
+        Nullable<int> noMin;
+        BuildScalarDetail("RequiredOwnerUnderAttack", since,
+            noMin, OwnerUnderAttackWithin, LastCheckReport);
+    }
+
+    // ─── Enemy houses still alive ───────────────────────────────────────
+    if (EnemyHousesAliveMin.isset() || EnemyHousesAliveMax.isset())
+    {
+        int const n = CountEnemyHousesAlive(pOwner);
+        BuildScalarDetail("RequiredEnemyHousesAlive", n,
+            EnemyHousesAliveMin, EnemyHousesAliveMax, LastCheckReport);
     }
 
     // ─── Deferred to follow-up ships ────────────────────────────────────

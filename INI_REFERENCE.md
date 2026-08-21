@@ -330,6 +330,28 @@ this thins how often it competes. Uses the game's synchronized RNG, so it is
 within one frame agrees; it is not serialized. Detail report:
 `RequiredChance(<1=pass,0=fail>)`.
 
+### Reactive — is my base under attack?
+
+`RequiredOwnerUnderAttackWithin` passes when the owner was attacked within the
+last N frames (read from `HouseClass::LATime`, the frame of the last attack):
+```ini
+RequiredOwnerUnderAttackWithin=150   ; attacked within the last ~10 seconds
+```
+The reactive-defense signal: fire a defensive/recall wave the moment the base
+takes fire. Never-attacked houses never pass. Detail report:
+`RequiredOwnerUnderAttack(<frames-since>)` compared against the window as a cap.
+
+### Endgame — how many enemies remain?
+
+`RequiredEnemyHousesAliveMin` / `RequiredEnemyHousesAliveMax` gate on the count of
+enemy houses still in play (not defeated, not allied, not neutral):
+```ini
+RequiredEnemyHousesAliveMax=1    ; only when down to the last enemy — go all-in
+```
+Or `Min=2` to hold a big all-or-nothing commitment while two enemies could still
+gang up. `-1` max = uncapped. Detail report:
+`RequiredEnemyHousesAlive(<count>):min,max`.
+
 **Power field sign convention:**
 - Positive = surplus (e.g. `100` means at least 100 units of surplus)
 - `0` = must not be in deficit
@@ -696,6 +718,7 @@ ScriptSwitch.1.RequiredElapsedTimeMin=18000  ; after 20 minutes, always regroup 
 | `Script` | target ScriptType ID (**required**; the rule is skipped without it) |
 | `RequiredOwnerPowerMin` / `Max` | owner net power (Output−Drain) window. `-1` max = uncapped, so use `0` / a negative like `-100` to mean "in deficit". |
 | `RequiredStructureOnMap` + `…Min` | a structure of a listed type exists on the map (any house) |
+| `RequiredOwnerUnderAttackWithin` | the team's owner was attacked within N frames (base under attack) |
 | `RequiredElapsedTimeMin` / `Max` | frame window since scenario start (15 frames ≈ 1s) |
 | `DebugLog` / `DebugMessageDisplay` | fired (log / HUD) when this rule actually swaps the script |
 
