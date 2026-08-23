@@ -185,6 +185,11 @@ struct ScriptSwitchRule
     bool hasElapsedMin = false; int elapsedMin = 0;
     bool hasElapsedMax = false; int elapsedMax = 0;
     bool hasUnderAttack = false; int underAttackWithin = 0;
+    bool hasCreditsMin = false; int creditsMin = 0;
+    bool hasCreditsMax = false; int creditsMax = 0;
+    bool hasEnemyHousesMin = false; int enemyHousesMin = 0;
+    bool hasEnemyHousesMax = false; int enemyHousesMax = 0;
+    bool hasEnemyUnderAttack = false; int enemyUnderAttackWithin = 0;  // vs pTeam->Target
     std::string debugLog;
     std::string debugDisplay;
 };
@@ -2065,6 +2070,17 @@ static void ParseScriptSwitch(CCINIClass* const pINI)
             snprintf(key, sizeof(key), "ScriptSwitch.%d.RequiredOwnerUnderAttackWithin", i);
             if (pINI->ReadString(section, key, "", buf, sizeof(buf)) > 0) { r.hasUnderAttack = true; r.underAttackWithin = atoi(buf); }
 
+            snprintf(key, sizeof(key), "ScriptSwitch.%d.RequiredOwnerCreditsMin", i);
+            if (pINI->ReadString(section, key, "", buf, sizeof(buf)) > 0) { r.hasCreditsMin = true; r.creditsMin = atoi(buf); }
+            snprintf(key, sizeof(key), "ScriptSwitch.%d.RequiredOwnerCreditsMax", i);
+            if (pINI->ReadString(section, key, "", buf, sizeof(buf)) > 0) { r.hasCreditsMax = true; r.creditsMax = atoi(buf); }
+            snprintf(key, sizeof(key), "ScriptSwitch.%d.RequiredEnemyHousesAliveMin", i);
+            if (pINI->ReadString(section, key, "", buf, sizeof(buf)) > 0) { r.hasEnemyHousesMin = true; r.enemyHousesMin = atoi(buf); }
+            snprintf(key, sizeof(key), "ScriptSwitch.%d.RequiredEnemyHousesAliveMax", i);
+            if (pINI->ReadString(section, key, "", buf, sizeof(buf)) > 0) { r.hasEnemyHousesMax = true; r.enemyHousesMax = atoi(buf); }
+            snprintf(key, sizeof(key), "ScriptSwitch.%d.RequiredEnemyUnderAttackWithin", i);
+            if (pINI->ReadString(section, key, "", buf, sizeof(buf)) > 0) { r.hasEnemyUnderAttack = true; r.enemyUnderAttackWithin = atoi(buf); }
+
             snprintf(key, sizeof(key), "ScriptSwitch.%d.DebugLog", i);
             if (pINI->ReadString(section, key, "", buf, sizeof(buf)) > 0) r.debugLog = buf;
             snprintf(key, sizeof(key), "ScriptSwitch.%d.DebugMessageDisplay", i);
@@ -2123,6 +2139,20 @@ void AITriggerTypeExt::EvaluateScriptSwitch(TeamClass* const pTeam)
         if (r.hasElapsedMin && frame < r.elapsedMin) continue;
         if (r.hasElapsedMax && r.elapsedMax != -1 && frame > r.elapsedMax) continue;
         if (r.hasUnderAttack && (pOwner->LATime <= 0 || (frame - pOwner->LATime) > r.underAttackWithin)) continue;
+        if (r.hasCreditsMin && pOwner->Balance < r.creditsMin) continue;
+        if (r.hasCreditsMax && r.creditsMax != -1 && pOwner->Balance > r.creditsMax) continue;
+        if (r.hasEnemyHousesMin || r.hasEnemyHousesMax)
+        {
+            int const eh = CountEnemyHousesAlive(pOwner);
+            if (r.hasEnemyHousesMin && eh < r.enemyHousesMin) continue;
+            if (r.hasEnemyHousesMax && r.enemyHousesMax != -1 && eh > r.enemyHousesMax) continue;
+        }
+        if (r.hasEnemyUnderAttack)
+        {
+            HouseClass* const pTarget = pTeam->Target;
+            if (!pTarget || pTarget->LATime <= 0
+                || (frame - pTarget->LATime) > r.enemyUnderAttackWithin) continue;
+        }
 
         // First matching rule wins. Swap only if not already on that script.
         if (pTeam->CurrentScript->Type != r.NewScript)

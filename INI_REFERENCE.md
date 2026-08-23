@@ -728,6 +728,9 @@ ScriptSwitch.1.RequiredElapsedTimeMin=18000  ; after 20 minutes, always regroup 
 | `RequiredOwnerPowerMin` / `Max` | owner net power (Output−Drain) window. `-1` max = uncapped, so use `0` / a negative like `-100` to mean "in deficit". |
 | `RequiredStructureOnMap` + `…Min` | a structure of a listed type exists on the map (any house) |
 | `RequiredOwnerUnderAttackWithin` | the team's owner was attacked within N frames (base under attack) |
+| `RequiredOwnerCreditsMin` / `Max` | owner credit balance window (`-1` max = uncapped) |
+| `RequiredEnemyHousesAliveMin` / `Max` | count of enemy houses still in play (e.g. `Max=1` = last enemy) |
+| `RequiredEnemyUnderAttackWithin` | the team's **Target** house was hit within N frames (pile on) |
 | `RequiredElapsedTimeMin` / `Max` | frame window since scenario start (15 frames ≈ 1s) |
 | `DebugLog` / `DebugMessageDisplay` | fired (log / HUD) when this rule actually swaps the script |
 
