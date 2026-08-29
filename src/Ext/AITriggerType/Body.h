@@ -462,6 +462,18 @@ public:
         // this many frames. "Pile on while they're already putting out a fire."
         Nullable<int> EnemyUnderAttackWithin;
 
+        // Reactive base-defense: threat to the OWNER's zones split by attacker
+        // TYPE, read from the engine's own per-zone threat estimate
+        // (HouseClass::ZoneInfos[5], summed across the 5 zones). Lets a trigger
+        // fire the matching RESPONSE — e.g. dispatch AA when air threat is high,
+        // anti-armor when tanks mass, anti-infantry when infantry swarm.
+        Nullable<int> OwnerZoneThreatAirMin;
+        Nullable<int> OwnerZoneThreatAirMax;
+        Nullable<int> OwnerZoneThreatArmorMin;
+        Nullable<int> OwnerZoneThreatArmorMax;
+        Nullable<int> OwnerZoneThreatInfantryMin;
+        Nullable<int> OwnerZoneThreatInfantryMax;
+
         // -----------------------------------------------------------------------
         // ALLIES — buildings
         // -----------------------------------------------------------------------
@@ -791,6 +803,7 @@ public:
         bool CheckOwnerUnderAttack(HouseClass* pHouse) const;
         bool CheckEnemyHousesAlive(HouseClass* pOwner) const;
         bool CheckEnemyUnderAttack(HouseClass* pCallingHouse, HouseClass* pTargetHouse) const;
+        bool CheckZoneThreat(HouseClass* pHouse) const;
         bool CheckAllies(HouseClass* pCallingHouse) const;
         bool CheckNeutral() const;
         bool CheckElapsedTime() const;

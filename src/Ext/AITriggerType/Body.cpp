@@ -528,6 +528,12 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     ReadNullableInt(exINI, section, "RequiredEnemyHousesAliveMin",   EnemyHousesAliveMin);
     ReadNullableInt(exINI, section, "RequiredEnemyHousesAliveMax",   EnemyHousesAliveMax);
     ReadNullableInt(exINI, section, "RequiredEnemyUnderAttackWithin", EnemyUnderAttackWithin);
+    ReadNullableInt(exINI, section, "RequiredOwnerZoneThreatAirMin",       OwnerZoneThreatAirMin);
+    ReadNullableInt(exINI, section, "RequiredOwnerZoneThreatAirMax",       OwnerZoneThreatAirMax);
+    ReadNullableInt(exINI, section, "RequiredOwnerZoneThreatArmorMin",     OwnerZoneThreatArmorMin);
+    ReadNullableInt(exINI, section, "RequiredOwnerZoneThreatArmorMax",     OwnerZoneThreatArmorMax);
+    ReadNullableInt(exINI, section, "RequiredOwnerZoneThreatInfantryMin",  OwnerZoneThreatInfantryMin);
+    ReadNullableInt(exINI, section, "RequiredOwnerZoneThreatInfantryMax",  OwnerZoneThreatInfantryMax);
 
     // -----------------------------------------------------------------------
     // Allies
@@ -1353,6 +1359,7 @@ bool AITriggerTypeExt::ExtData::ExtraPrerequisitesMet(
     if (!CheckOwnerUnderAttack(pCallingHouse))    return false;
     if (!CheckEnemyHousesAlive(pCallingHouse))    return false;
     if (!CheckEnemyUnderAttack(pCallingHouse, pTargetHouse)) return false;
+    if (!CheckZoneThreat(pCallingHouse))          return false;
     if (!CheckAllies(pCallingHouse))              return false;
     if (!CheckNeutral())                          return false;
     return true;
@@ -1583,6 +1590,51 @@ bool AITriggerTypeExt::ExtData::CheckEnemyUnderAttack(
     return (Unsorted::CurrentFrame - pEnemy->LATime) <= EnemyUnderAttackWithin.Get();
 }
 
+// Sum the owner's per-zone threat of one kind across all 5 zones. ZoneInfos is
+// the engine's own live estimate of the air/armor/infantry threat to each zone
+// of the house's base (maintained for the AI's defensive decisions).
+enum class AIExtZoneKind { Air, Armor, Infantry };
+static int SumZoneThreat(HouseClass* const pHouse, AIExtZoneKind const kind)
+{
+    if (!pHouse) return 0;
+    int total = 0;
+    for (int i = 0; i < 5; ++i)
+    {
+        auto const& z = pHouse->ZoneInfos[i];
+        switch (kind)
+        {
+        case AIExtZoneKind::Air:      total += z.Aircraft; break;
+        case AIExtZoneKind::Armor:    total += z.Armor;    break;
+        case AIExtZoneKind::Infantry: total += z.Infantry; break;
+        }
+    }
+    return total;
+}
+
+// Gate on the owning house's per-type zone threat (fire the matching response).
+bool AITriggerTypeExt::ExtData::CheckZoneThreat(HouseClass* const pHouse) const
+{
+    auto const gate = [](const Nullable<int>& mn, const Nullable<int>& mx, int val) -> bool
+    {
+        if (mn.isset() && val < mn.Get()) return false;
+        if (mx.isset() && mx.Get() != -1 && val > mx.Get()) return false;
+        return true;
+    };
+    bool const wantAir = OwnerZoneThreatAirMin.isset()      || OwnerZoneThreatAirMax.isset();
+    bool const wantArm = OwnerZoneThreatArmorMin.isset()    || OwnerZoneThreatArmorMax.isset();
+    bool const wantInf = OwnerZoneThreatInfantryMin.isset() || OwnerZoneThreatInfantryMax.isset();
+    if (!wantAir && !wantArm && !wantInf) return true;
+    if (!pHouse) return true;
+
+    if (wantAir && !gate(OwnerZoneThreatAirMin, OwnerZoneThreatAirMax,
+        SumZoneThreat(pHouse, AIExtZoneKind::Air))) return false;
+    if (wantArm && !gate(OwnerZoneThreatArmorMin, OwnerZoneThreatArmorMax,
+        SumZoneThreat(pHouse, AIExtZoneKind::Armor))) return false;
+    if (wantInf && !gate(OwnerZoneThreatInfantryMin, OwnerZoneThreatInfantryMax,
+        SumZoneThreat(pHouse, AIExtZoneKind::Infantry))) return false;
+    return true;
+}
+
 // Probabilistic gate. Rolls the game's SYNCED RNG once per frame (cached so all
 // evaluations in a frame agree) — passes if roll(0..99) < Chance. Sync-safe.
 bool AITriggerTypeExt::ExtData::CheckChance() const
@@ -1731,6 +1783,12 @@ void AITriggerTypeExt::ExtData::Serialize(T& Stm)
         .Process(this->EnemyHousesAliveMin)
         .Process(this->EnemyHousesAliveMax)
         .Process(this->EnemyUnderAttackWithin)
+        .Process(this->OwnerZoneThreatAirMin)
+        .Process(this->OwnerZoneThreatAirMax)
+        .Process(this->OwnerZoneThreatArmorMin)
+        .Process(this->OwnerZoneThreatArmorMax)
+        .Process(this->OwnerZoneThreatInfantryMin)
+        .Process(this->OwnerZoneThreatInfantryMax)
         ;
 
     SerializeGate(Stm, this->AlliesBuildings);
@@ -2547,6 +2605,20 @@ void AITriggerTypeExt::ExtData::EvaluateAndReport(HouseClass* pOwner, HouseClass
         BuildScalarDetail("RequiredEnemyUnderAttack", since,
             noMin, EnemyUnderAttackWithin, LastCheckReport);
     }
+
+    // ─── Owner zone threat by attacker type (ZoneInfos, summed) ─────────
+    if (OwnerZoneThreatAirMin.isset() || OwnerZoneThreatAirMax.isset())
+        BuildScalarDetail("RequiredOwnerZoneThreatAir",
+            SumZoneThreat(pOwner, AIExtZoneKind::Air),
+            OwnerZoneThreatAirMin, OwnerZoneThreatAirMax, LastCheckReport);
+    if (OwnerZoneThreatArmorMin.isset() || OwnerZoneThreatArmorMax.isset())
+        BuildScalarDetail("RequiredOwnerZoneThreatArmor",
+            SumZoneThreat(pOwner, AIExtZoneKind::Armor),
+            OwnerZoneThreatArmorMin, OwnerZoneThreatArmorMax, LastCheckReport);
+    if (OwnerZoneThreatInfantryMin.isset() || OwnerZoneThreatInfantryMax.isset())
+        BuildScalarDetail("RequiredOwnerZoneThreatInfantry",
+            SumZoneThreat(pOwner, AIExtZoneKind::Infantry),
+            OwnerZoneThreatInfantryMin, OwnerZoneThreatInfantryMax, LastCheckReport);
 
     // ─── Deferred to follow-up ships ────────────────────────────────────
     // SuperWeapons: SWReadyGate has different API (ReadyMin/Max + frame math)

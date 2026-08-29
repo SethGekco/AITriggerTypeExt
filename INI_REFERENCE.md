@@ -350,6 +350,28 @@ RequiredEnemyUnderAttackWithin=150
 No single enemy resolved (`Any`/`All`) or an un-attacked enemy → fails. Detail
 report: `RequiredEnemyUnderAttack(<frames-since>)`.
 
+### Reactive base defense — zone threat by attacker type
+
+`RequiredOwnerZoneThreat{Air,Armor,Infantry}{Min,Max}` gate on the **engine's own
+per-zone threat estimate** for the owning house, split by attacker type and
+summed across its 5 base zones (`HouseClass::ZoneInfos`). This is how the AI
+already senses "what is threatening my base and of what kind" — now exposed so a
+trigger can fire the **matching response**:
+```ini
+; Scramble an anti-air wave when the base faces real air threat
+RequiredOwnerZoneThreatAirMin=20
+
+; Or hold an anti-armor counter until tanks actually mass
+RequiredOwnerZoneThreatArmorMin=40
+```
+The three axes are independent and AND-checked when more than one is set. `-1`
+max = uncapped. The raw values are engine threat units (calibrate against the
+detail read-out, which shows the live number): detail reports
+`RequiredOwnerZoneThreatAir(<n>)`, `…Armor(<n>)`, `…Infantry(<n>)`. Because it
+reads the owner's own zone estimate, this only makes sense on AI houses (the ones
+that run the threat system). Groundwork for directional/where-to-defend logic;
+this first cut is the *whole-base* per-type total.
+
 ### Endgame — how many enemies remain?
 
 `RequiredEnemyHousesAliveMin` / `RequiredEnemyHousesAliveMax` gate on the count of
