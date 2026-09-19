@@ -850,6 +850,41 @@ Semantics:
   death or team disband could stay stopped until it gets a new order; rare,
   will get a dedicated release if it shows up in testing.
 
+### `MissileEvasive` — scatter out of incoming missile blasts
+
+```ini
+[MySquad.AIExt]
+MissileEvasive=yes         ; always scatter when a missile is detected
+                           ; targeting their location (default off)
+MissileEvasive.Cells=4     ; move this much (cells)
+MissileEvasive.WH.Calc=yes ; also derive a distance from the missile's warhead
+                           ; blast size (CellSpread); the LARGER of the two
+                           ; distances is how far the unit actually moves.
+                           ; Default yes.
+MissileEvasive.MinDamage=100 ; detection filter — missiles below this damage
+                           ; are ignored (otherwise every AA rocket makes the
+                           ; team dance nonstop). 0 = dodge everything.
+```
+
+What counts as a missile (scanned once per frame, shared by all teams):
+- **Homing / ballistic projectiles** in flight — `ROT>0`, `Arcing=yes` or
+  `Vertical=yes` bullets with a target (V3-style shells, torpedoes, big
+  rockets).
+- **Rocket-locomotor aircraft** — the scripted V3ROCKET / DMISL / CMISL-class
+  spawned missiles. Their payload isn't a normal weapon, so they default to
+  "always heavy enough to dodge" unless the type carries a real weapon.
+
+Behavior:
+- A member standing inside the blast area (warhead `CellSpread`, min 2 cells
+  when unknown) gets a move order straight AWAY from the predicted impact
+  point; a unit standing exactly on it picks a synced-random direction.
+- No latching needed: while the missile is in flight the member keeps being
+  pushed until it's clear of the zone, then nothing further happens — the
+  team's script re-collects everyone afterwards.
+- Overrides everything, including combat ("always scatter" per spec) and any
+  FormationKeep hold (a frozen unit can't dodge — it gets released first).
+- Evaluated ~4×/second per team, deterministically staggered; MP-safe.
+
 ### Team-scoped `Destroyed` / `Deleted` messages
 
 ```ini

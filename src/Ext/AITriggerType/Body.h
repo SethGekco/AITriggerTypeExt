@@ -956,6 +956,11 @@ public:
     static void EvaluateFormationKeep(TeamClass* pTeam);
     static void ReleaseFormationKeep(TeamClass* pTeam);
 
+    // MissileEvasive — members inside the blast area of an incoming missile
+    // (homing/ballistic bullets + Rocket-locomotor aircraft) scatter straight
+    // out of it, max(Cells, CellSpread+1) cells when WH.Calc=yes.
+    static void EvaluateMissileEvasive(TeamClass* pTeam);
+
     // Weight adjustments — called from the RegisterSuccess (success=true) /
     // RegisterFailure (success=false) hooks, BEFORE vanilla runs.
     // Self-delta replaces vanilla's global delta for this trigger; cascades

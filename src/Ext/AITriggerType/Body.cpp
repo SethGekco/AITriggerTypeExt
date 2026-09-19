@@ -19,6 +19,10 @@
 #include <ScenarioClass.h>
 #include <TeamClass.h>
 #include <FootClass.h>
+#include <BulletClass.h>
+#include <BulletTypeClass.h>
+#include <MapClass.h>
+#include <cmath>
 #include <TeamTypeClass.h>
 #include <ScriptClass.h>
 #include <ScriptTypeClass.h>
@@ -243,6 +247,14 @@ struct TeamTypeExtras
     int  FormationRadius = 5;      // cells a member may range ahead of the
                                    // rearmost mover before being held
     int  FormationResume = 2;      // hysteresis: release at <= Radius - Resume
+    bool MissileEvasive  = false;  // scatter out of incoming missile blasts
+    int  MissileEvasiveCells = 4;  // minimum dodge distance (cells)
+    bool MissileEvasiveWHCalc = true;   // scale the dodge to the warhead's
+                                        // CellSpread; the LARGER of the two
+                                        // distances wins (Rex's spec)
+    int  MissileEvasiveMinDamage = 100; // detection filter: ignore light
+                                        // missiles (AA rockets etc.) or teams
+                                        // dance nonstop; 0 = dodge everything
 };
 static std::map<TeamTypeClass*, TeamTypeExtras> g_TeamExtras;
 
@@ -2322,6 +2334,27 @@ static void ParseScriptSwitch(CCINIClass* const pINI)
             Debug::Log("[AIExt FormationKeep] %s: Mode=%s not implemented "
                 "(v1 supports stop only) — using stop\n", pTT->ID, buf);
         }
+        if (pINI->ReadString(section, "MissileEvasive", "", buf, sizeof(buf)) > 0)
+        {
+            ex.MissileEvasive = (_stricmp(buf, "yes") == 0
+                || _stricmp(buf, "true") == 0 || strcmp(buf, "1") == 0);
+            any = true;
+        }
+        if (pINI->ReadString(section, "MissileEvasive.Cells", "", buf, sizeof(buf)) > 0)
+        {
+            int const v = atoi(buf);
+            if (v > 0) ex.MissileEvasiveCells = v;
+        }
+        if (pINI->ReadString(section, "MissileEvasive.WH.Calc", "", buf, sizeof(buf)) > 0)
+        {
+            ex.MissileEvasiveWHCalc = (_stricmp(buf, "yes") == 0
+                || _stricmp(buf, "true") == 0 || strcmp(buf, "1") == 0);
+        }
+        if (pINI->ReadString(section, "MissileEvasive.MinDamage", "", buf, sizeof(buf)) > 0)
+        {
+            int const v = atoi(buf);
+            if (v >= 0) ex.MissileEvasiveMinDamage = v;
+        }
         if (any)
             g_TeamExtras[pTT] = std::move(ex);
     }
@@ -2632,6 +2665,153 @@ void AITriggerTypeExt::EvaluateFormationKeep(TeamClass* const pTeam)
             pFoot->SetSpeedPercentage(0.0);
         else if (held && ahead <= resumeGap)
             pFoot->SetSpeedPercentage(1.0);
+    }
+}
+
+// ============================================================================
+// MissileEvasive — scatter out of the blast area of incoming missiles
+// ============================================================================
+
+struct IncomingThreat
+{
+    CoordStruct impact;       // where it will land
+    double      spreadCells;  // warhead CellSpread (0 = unknown)
+    int         damage;       // for the per-team MinDamage filter
+};
+
+// The Rocket locomotor CLSID — V3ROCKET / DMISL / CMISL-class spawned
+// missiles carry it (AircraftTypes in the rules).
+static const _GUID RocketLocomotorGUID =
+    { 0xB7B49766, 0xE576, 0x11D3, { 0x9B, 0xD9, 0x00, 0x10, 0x4B, 0x97, 0x2F, 0xE8 } };
+
+// One scan per frame, shared by every MissileEvasive team: everything
+// currently in flight with a known target. Two sources — homing/ballistic
+// BulletClass projectiles (ROT>0 / Arcing / Vertical), and Rocket-locomotor
+// aircraft (the big scripted missiles, whose payload isn't a normal weapon —
+// damage defaults high so the MinDamage filter keeps them dodge-worthy).
+static const std::vector<IncomingThreat>& CollectIncomingThreats()
+{
+    static std::vector<IncomingThreat> list;
+    static int cachedFrame = -1;
+    if (Unsorted::CurrentFrame == cachedFrame)
+        return list;
+    cachedFrame = Unsorted::CurrentFrame;
+    list.clear();
+
+    for (auto const pBullet : BulletClass::Array)
+    {
+        if (!pBullet || !pBullet->Type || !pBullet->Target) continue;
+        auto const pBT = pBullet->Type;
+        if (pBT->ROT <= 0 && !pBT->Arcing && !pBT->Vertical) continue;
+
+        IncomingThreat t;
+        t.impact      = pBullet->Target->GetCoords();
+        t.spreadCells = pBullet->WH ? pBullet->WH->CellSpread : 0.0;
+        t.damage      = pBullet->Health;
+        list.push_back(t);
+    }
+
+    for (auto const pAir : AircraftClass::Array)
+    {
+        if (!pAir || !pAir->IsAlive || pAir->InLimbo) continue;
+        auto const pType = pAir->GetTechnoType();
+        if (!pType) continue;
+        if (memcmp(&pType->Locomotor, &RocketLocomotorGUID, sizeof(_GUID)) != 0)
+            continue;
+        AbstractClass* const pTgt = pAir->Target
+            ? pAir->Target : static_cast<AbstractClass*>(pAir->Destination);
+        if (!pTgt) continue;
+
+        IncomingThreat t;
+        t.impact      = pTgt->GetCoords();
+        t.spreadCells = 0.0;
+        t.damage      = 999;   // V3-class payloads aren't a normal weapon —
+                               // always heavy enough to dodge
+        auto const pWS = pType->GetWeapon(0);
+        if (pWS && pWS->WeaponType)
+        {
+            t.damage = pWS->WeaponType->Damage;
+            if (pWS->WeaponType->Warhead)
+                t.spreadCells = pWS->WeaponType->Warhead->CellSpread;
+        }
+        list.push_back(t);
+    }
+    return list;
+}
+
+// Scatter rule: a member standing inside a threat's blast area gets a move
+// order straight AWAY from the impact point, max(Cells, CellSpread+1) cells
+// out (Rex's spec: the larger distance wins when WH.Calc=yes). Idempotent —
+// no latch needed: while the missile is in flight the member keeps being
+// pushed until it is outside the danger zone, then nothing more happens; the
+// team's script re-collects everyone afterwards. Members held by
+// FormationKeep are released before dodging (a frozen unit cannot dodge).
+// MP-safe: synced inputs only; the standing-on-impact fallback direction
+// comes from ScenarioClass::Random.
+void AITriggerTypeExt::EvaluateMissileEvasive(TeamClass* const pTeam)
+{
+    if (g_TeamExtras.empty() || !pTeam || !pTeam->Type) return;
+    auto const it = g_TeamExtras.find(pTeam->Type);
+    if (it == g_TeamExtras.end() || !it->second.MissileEvasive) return;
+    auto const& ex = it->second;
+
+    int const frame = Unsorted::CurrentFrame;
+    if (((frame + pTeam->CreationFrame) & 3) != 1) return;   // ~4x/sec
+
+    auto const& threats = CollectIncomingThreats();
+    if (threats.empty()) return;
+
+    for (auto p = pTeam->FirstUnit; p; p = p->NextTeamMember)
+    {
+        if (!p->IsAlive || p->InLimbo) continue;
+
+        for (auto const& t : threats)
+        {
+            if (t.damage < ex.MissileEvasiveMinDamage) continue;
+
+            double const dangerCells =
+                t.spreadCells > 0.0 ? t.spreadCells : 2.0;
+            double const distCells =
+                p->Location.DistanceFrom(t.impact) / 256.0;
+            if (distCells > dangerCells + 0.5) continue;
+
+            int moveCells = ex.MissileEvasiveCells;
+            if (ex.MissileEvasiveWHCalc)
+            {
+                int const whCells = static_cast<int>(dangerCells) + 1;
+                if (whCells > moveCells) moveCells = whCells;
+            }
+
+            // Straight away from the impact; synced-random direction when
+            // standing exactly on it.
+            double dx = static_cast<double>(p->Location.X - t.impact.X);
+            double dy = static_cast<double>(p->Location.Y - t.impact.Y);
+            double const len = std::sqrt(dx * dx + dy * dy);
+            if (len < 64.0)
+            {
+                static const int dirs[8][2] = {
+                    { 1, 0}, { 1, 1}, { 0, 1}, {-1, 1},
+                    {-1, 0}, {-1,-1}, { 0,-1}, { 1,-1} };
+                int const d = ScenarioClass::Instance->Random.RandomRanged(0, 7);
+                dx = dirs[d][0]; dy = dirs[d][1];
+            }
+            else
+            {
+                dx /= len; dy /= len;
+            }
+
+            CoordStruct dest = p->Location;
+            dest.X += static_cast<int>(dx * moveCells * 256.0);
+            dest.Y += static_cast<int>(dy * moveCells * 256.0);
+            auto const pCell = MapClass::Instance.TryGetCellAt(dest);
+            if (!pCell) continue;   // would leave the map — stay put
+
+            if (p->SpeedPercentage == 0.0)      // FormationKeep hold —
+                p->SetSpeedPercentage(1.0);     // release, then dodge
+            p->SetDestination(pCell, true);
+            p->QueueMission(Mission::Move, false);
+            break;   // one dodge per member per pass
+        }
     }
 }
 

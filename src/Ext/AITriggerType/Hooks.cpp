@@ -422,6 +422,7 @@ DEFINE_HOOK(0x6E9443, TeamClass_Update_ScriptSwitch, 0x8)
     GET(TeamClass*, pTeam, ESI);
     AITriggerTypeExt::EvaluateScriptSwitch(pTeam);
     AITriggerTypeExt::EvaluateFormationKeep(pTeam);
+    AITriggerTypeExt::EvaluateMissileEvasive(pTeam);
     return 0;
 }
 

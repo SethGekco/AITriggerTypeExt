@@ -237,6 +237,7 @@ attacker (untagged teams still retaliate, since the Antares global is on).
 - [ ] Credits / Power / TechLevel / ElapsedTime gates (G)
 - [ ] Team-scoped Destroyed/Deleted + TeamRetaliate=no (H)
 - [ ] FormationKeep hold/resume on a mixed-speed team (I)
+- [ ] MissileEvasive scatter vs V3/Dreadnought (J)
 
 ---
 
@@ -261,3 +262,32 @@ Expect, while the team is on its move action:
   speed — nobody may be frozen under fire.
 - If the team dies mid-march, no survivor may remain frozen in place
   (destructor release).
+
+---
+
+## Test J — MissileEvasive
+
+Tag a team the AI parks defensively (a guard/defense team is ideal — it sits
+still long enough to shoot missiles at):
+
+```ini
+[SomeGuardTeamID.AIExt]
+MissileEvasive=yes
+MissileEvasive.Cells=4
+MissileEvasive.WH.Calc=yes
+```
+
+Then fire V3s / Dreadnought missiles / Boris strikes at the tagged team's
+position (or let a Soviet AI do it).
+
+Expect:
+- As the missile comes in, tagged members inside the blast footprint run
+  OUT of it — roughly straight away from the aim point — and the missile
+  hits (mostly) empty ground. Untagged teams stand and eat it.
+- With WH.Calc=yes and a big-CellSpread warhead, the dodge distance grows to
+  clear the whole footprint (larger of Cells vs CellSpread+1 wins).
+- Small missiles (AA rockets, IFV rockets) must NOT trigger dancing — the
+  default MinDamage=100 filters them. Set MissileEvasive.MinDamage=0 to
+  watch the unfiltered behavior for comparison.
+- Members mid-dodge resume their team's script once the threat is gone
+  (gather/regroup pulls them back together).
