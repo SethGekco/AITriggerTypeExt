@@ -2851,6 +2851,16 @@ void AITriggerTypeExt::EvaluateMissileEvasive(TeamClass* const pTeam)
 // GuardMe / Escort — priority escort behavior
 // ============================================================================
 
+// Ground distance, ignoring altitude: a Flak Track escorting a Kirov wave
+// sits a full flight-height "away" in 3D even when directly underneath it —
+// 2D keeps the guard bubble honest for ground-escorts-air compositions.
+static double Distance2D(const CoordStruct& a, const CoordStruct& b)
+{
+    double const dx = static_cast<double>(a.X - b.X);
+    double const dy = static_cast<double>(a.Y - b.Y);
+    return std::sqrt(dx * dx + dy * dy);
+}
+
 // First live, on-map member — used as a team's position reference.
 static FootClass* FirstLiveMember(TeamClass* const pTeam)
 {
@@ -2912,7 +2922,7 @@ void AITriggerTypeExt::EvaluateEscort(TeamClass* const pTeam)
         auto const pRef = FirstLiveMember(pOther);
         if (!pRef) continue;
 
-        double const d = pSelf->Location.DistanceFrom(pRef->Location);
+        double const d = Distance2D(pSelf->Location, pRef->Location);
         if (!pGuardee || d < best)
         {
             pGuardee    = pOther;
@@ -2930,7 +2940,7 @@ void AITriggerTypeExt::EvaluateEscort(TeamClass* const pTeam)
     for (auto p = pTeam->FirstUnit; p; p = p->NextTeamMember)
     {
         if (!p->IsAlive || p->InLimbo) continue;
-        double const d = p->Location.DistanceFrom(pGuardeeRef->Location);
+        double const d = Distance2D(p->Location, pGuardeeRef->Location);
         if (d > radiusLeptons)
         {
             if (p->SpeedPercentage == 0.0)      // never fight a FormationKeep

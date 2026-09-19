@@ -900,15 +900,23 @@ GuardMe.Scope=global  ; global  = any Escort team of the same house (default)
                       ;           siblings — put Kirovs on Team1 and the
                       ;           escort squadron on Team2 of one trigger)
 
-[MyRocketeerEscort.AIExt]
+[MyFlakTrackEscort.AIExt]
 Escort=yes            ; this team shadows the nearest GuardMe team it may serve
 ```
+
+**Both teams must be buildable by the SAME house** — escorts only serve their
+own house's teams, so pair same-faction units (Kirov + Flak Track, Rhino
+escort, etc.). A Kirov + Rocketeer pairing can never exist: no house owns
+both prerequisites.
 
 Behavior:
 - The escort team continuously tracks the **nearest** same-house `GuardMe`
   team its scope admits. Members outside the radius close in on the guardee
   (re-issued as the guardee moves, so escorts follow a flying Kirov wave);
   once inside they flip to **Area Guard** and engage anything that attacks.
+- The guard bubble uses **ground (2D) distance**, so a Flak Track directly
+  under a Kirov counts as distance 0 — flight altitude doesn't eat into the
+  radius for ground-escorts-air compositions.
 - If the guardee dies, the escort re-targets the next nearest guardee; when
   none remain, steering stops and the escort team's own script takes back
   over — give escorts a long guard action (`5,N`) as their script so nothing
@@ -916,8 +924,9 @@ Behavior:
 - Escort duty overrides a FormationKeep hold. Works for ground and air
   escorts alike. ~2×/second, deterministically staggered, MP-safe.
 - The classic composition: Kirov trigger with Team1 = Kirovs (`GuardMe=yes`),
-  Team2 = Rocketeers (`Escort=yes`, `GuardMe.Scope=trigger` on the Kirovs) —
-  the trigger builds both, and the Rocketeers fly formation automatically.
+  Team2 = Flak Tracks (`Escort=yes`, `GuardMe.Scope=trigger` on the Kirovs) —
+  the trigger builds both, and the Flak Tracks roll AA cover underneath the
+  wave automatically.
 - v1 note: the original spec's "protect" *script action* variant (flip into
   escort duty mid-script) belongs to the future scripts DLL; the tag version
   here is whole-life escort duty.

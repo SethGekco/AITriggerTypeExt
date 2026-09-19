@@ -297,7 +297,10 @@ Expect:
 ## Test K — GuardMe / Escort
 
 Pick one AITriggerType with both team slots: Team1 = a slow valuable team
-(Kirovs are perfect), Team2 = a fast escort squadron (Rocketeers, IFVs):
+(Kirovs are perfect), Team2 = a fast SAME-FACTION escort squadron — Flak
+Tracks (HTK) are ideal under Kirovs; Rhinos (HTNK) also work. Both teams
+must be buildable by the same house (Owner/prerequisites), or the pair can
+never exist in one AI's hands:
 
 ```ini
 [KirovTeamID.AIExt]
@@ -305,7 +308,7 @@ GuardMe=yes
 GuardMe.Radius=6
 GuardMe.Scope=trigger
 
-[RocketeerTeamID.AIExt]
+[FlakTrackTeamID.AIExt]
 Escort=yes
 ```
 
