@@ -224,6 +224,23 @@ static std::map<TeamTypeClass*, std::vector<ScriptSwitchRule>> g_ScriptSwitch;
 static bool g_ScriptSwitchParsed = false;
 static void ParseScriptSwitch(CCINIClass* pINI);   // defined below
 
+// ============================================================================
+// TeamType sidecar extras (2026-09-18) — non-ScriptSwitch [TeamID.AIExt] keys.
+// Parsed in the same sweep as ScriptSwitch.
+// ============================================================================
+struct TeamTypeExtras
+{
+    Nullable<bool> TeamRetaliate;  // per-team override of the Antares global.
+                                   // no  = this team NEVER retarget-retaliates
+                                   // yes = follow the global (cannot yet FORCE
+                                   //       retaliation while the global is off)
+    std::string DestroyedMsg;      // team-scoped lifecycle debug — fires for
+    std::string DestroyedLog;      // EVERY team of this TeamType, regardless
+    std::string DeletedMsg;        // of which trigger (if any) spawned it
+    std::string DeletedLog;
+};
+static std::map<TeamTypeClass*, TeamTypeExtras> g_TeamExtras;
+
 static TechnoTypeClass* FindTechnoTypeByID(const char* id)
 {
     TechnoTypeClass* p = InfantryTypeClass::Find(id);
@@ -2105,6 +2122,7 @@ void AITriggerTypeExt::EmitDebugSelected(
 static void ParseScriptSwitch(CCINIClass* const pINI)
 {
     g_ScriptSwitch.clear();
+    g_TeamExtras.clear();
     if (!pINI) return;
 
     char section[64], key[96], buf[192];
@@ -2255,6 +2273,30 @@ static void ParseScriptSwitch(CCINIClass* const pINI)
 
         if (!rules.empty())
             g_ScriptSwitch[pTT] = std::move(rules);
+
+        // ── TeamType sidecar extras (same section, not ScriptSwitch.N.*) ──
+        TeamTypeExtras ex;
+        bool any = false;
+        if (pINI->ReadString(section, "TeamRetaliate", "", buf, sizeof(buf)) > 0)
+        {
+            ex.TeamRetaliate = (_stricmp(buf, "yes") == 0
+                || _stricmp(buf, "true") == 0 || strcmp(buf, "1") == 0);
+            any = true;
+        }
+        auto readStr = [&](const char* k, std::string& out)
+        {
+            if (pINI->ReadString(section, k, "", buf, sizeof(buf)) > 0)
+            {
+                out = buf;
+                any = true;
+            }
+        };
+        readStr("DebugMessageDisplay.Destroyed", ex.DestroyedMsg);
+        readStr("DebugLog.Destroyed",            ex.DestroyedLog);
+        readStr("DebugMessageDisplay.Deleted",   ex.DeletedMsg);
+        readStr("DebugLog.Deleted",              ex.DeletedLog);
+        if (any)
+            g_TeamExtras[pTT] = std::move(ex);
     }
 }
 
@@ -2404,6 +2446,58 @@ void AITriggerTypeExt::EvaluateScriptSwitch(TeamClass* const pTeam)
             EmitScriptSwitchDebug(pTeam, r);
         }
         return;
+    }
+}
+
+// ============================================================================
+// TeamType sidecar runtime (2026-09-18)
+// ============================================================================
+
+// True when [TeamID.AIExt] TeamRetaliate=no — this team must never drop its
+// orders to retarget an attacker. Consulted upstream of the Antares/Ares
+// retaliate hook (see Hooks.cpp 0x6EB416).
+bool AITriggerTypeExt::IsTeamRetaliateSuppressed(TeamClass* const pTeam)
+{
+    if (g_TeamExtras.empty() || !pTeam || !pTeam->Type) return false;
+    auto const it = g_TeamExtras.find(pTeam->Type);
+    if (it == g_TeamExtras.end()) return false;
+    auto const& ov = it->second.TeamRetaliate;
+    return ov.isset() && !ov.Get();
+}
+
+// Team-scoped Destroyed/Deleted debug — fires from the TeamClass destructor
+// for every team of a tagged TeamType, regardless of which trigger (if any)
+// spawned it. Outcome distinguished by AchievedGreatSuccess: the SAME flag the
+// destructor itself tests to choose RegisterSuccess vs RegisterFailure, so
+// this lines up 1:1 with the trigger-scoped events. Both trigger-scoped and
+// team-scoped messages fire when both are configured (no exclusion).
+void AITriggerTypeExt::EmitTeamScopedLifecycle(TeamClass* const pTeam)
+{
+    if (g_TeamExtras.empty() || !pTeam || !pTeam->Type) return;
+    auto const it = g_TeamExtras.find(pTeam->Type);
+    if (it == g_TeamExtras.end()) return;
+    auto const& ex = it->second;
+
+    bool const success = pTeam->AchievedGreatSuccess;
+    const std::string& disp = success ? ex.DeletedMsg : ex.DestroyedMsg;
+    const std::string& log  = success ? ex.DeletedLog : ex.DestroyedLog;
+    if (disp.empty() && log.empty()) return;
+
+    auto const mode = GetDebugMode();
+    if (mode == DebugDisplayMode::Off) return;
+
+    if ((mode == DebugDisplayMode::Overlay || mode == DebugDisplayMode::Both)
+        && !disp.empty())
+    {
+        const wchar_t* pMsg = ResolveDebugText(disp);
+        if (pMsg && *pMsg)
+            MessageListClass::Instance.PrintMessage(pMsg);
+    }
+    if ((mode == DebugDisplayMode::Log || mode == DebugDisplayMode::Both)
+        && !log.empty())
+    {
+        Debug::Log("[AIExt Team%s] %s: %s\n",
+            success ? "Deleted" : "Destroyed", pTeam->Type->ID, log.c_str());
     }
 }
 

@@ -943,6 +943,12 @@ public:
     // [TeamTypeID.AIExt] ScriptSwitch.<N>.* rule set.
     static void EvaluateScriptSwitch(TeamClass* pTeam);
 
+    // TeamType sidecar (parsed in the same [TeamID.AIExt] sweep):
+    // per-team TeamRetaliate=no suppression + team-scoped Destroyed/Deleted
+    // debug messages (fire for every team of the type, any provenance).
+    static bool IsTeamRetaliateSuppressed(TeamClass* pTeam);
+    static void EmitTeamScopedLifecycle(TeamClass* pTeam);
+
     // Weight adjustments — called from the RegisterSuccess (success=true) /
     // RegisterFailure (success=false) hooks, BEFORE vanilla runs.
     // Self-delta replaces vanilla's global delta for this trigger; cascades

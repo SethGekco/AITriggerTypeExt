@@ -423,3 +423,60 @@ DEFINE_HOOK(0x6E9443, TeamClass_Update_ScriptSwitch, 0x8)
     AITriggerTypeExt::EvaluateScriptSwitch(pTeam);
     return 0;
 }
+
+// ============================================================================
+// TEAM-SCOPED LIFECYCLE — TeamClass destructor entry, 0x6E8DE0, size 5
+//
+// __thiscall: ECX = TeamClass*. Steal 5 = push ecx / push esi / mov esi,ecx /
+// push edi (position-independent; resume 0x6E8DE5 on a clean boundary).
+// Emits the [TeamID.AIExt] Destroyed/Deleted debug for EVERY dying team of a
+// tagged TeamType, regardless of provenance — the trigger-scoped events can't
+// do that (they key on the trigger). Outcome = AchievedGreatSuccess (+0x84),
+// the SAME flag this destructor tests at 0x6E8E20 to pick RegisterSuccess
+// (0x41FD60) vs RegisterFailure (0x41FE20) for the owning trigger.
+// Overlap-checked: Phobos' TeamClass_DTOR hook sits at 0x6E8EC6 (clear);
+// registry has nobody at the entry. Address + register verified by objdump of
+// vanilla gamemd.exe (2026-09-18).
+// ============================================================================
+
+DEFINE_HOOK(0x6E8DE0, TeamClass_DTOR_TeamScopedLifecycle, 0x5)
+{
+    GET(TeamClass*, pThis, ECX);
+    AITriggerTypeExt::EmitTeamScopedLifecycle(pThis);
+    return 0;
+}
+
+// ============================================================================
+// PER-TEAM RETALIATE — TeamClass::AttackedBy, 0x6EB416, size 9
+//
+// ESI = TeamClass*, EBP = attacker (verified by objdump; Antares reads the
+// same registers 0x1C later). Antares and Ares both hook 0x6EB432 to
+// implement the GLOBAL TeamRetaliate= logic; their skip target is 0x6EB47A.
+// We sit UPSTREAM (0x6EB416..0x6EB41E, no range overlap with their
+// 0x6EB432..0x6EB43A) so no same-address chaining is involved:
+//   TeamRetaliate=no  → jump straight to 0x6EB47A; neither vanilla nor the
+//     framework retaliate logic runs for this team. Before jumping we
+//     replicate the vanilla regroup-on-attack side effects our jump skips
+//     (0x6EB423..0x6EB42F: Annoyance ⇒ clear SpawnCell, set NeedsReGrouping +
+//     IsReforming) — suppressing retaliation must not suppress regrouping.
+//   TeamRetaliate=yes / unset → return 0; stolen bytes replay and the global
+//     path decides as before. (yes cannot yet FORCE retaliation while the
+//     Antares global is off — that would mean replicating its whole targeting
+//     block; documented limitation.)
+// ============================================================================
+
+DEFINE_HOOK(0x6EB416, TeamClass_AttackedBy_PerTeamRetaliate, 0x9)
+{
+    GET(TeamClass*, pThis, ESI);
+
+    if (!AITriggerTypeExt::IsTeamRetaliateSuppressed(pThis))
+        return 0;
+
+    if (pThis->Type && pThis->Type->Annoyance)
+    {
+        pThis->SpawnCell       = nullptr;
+        pThis->NeedsReGrouping = true;
+        pThis->IsReforming     = true;
+    }
+    return 0x6EB47A;
+}

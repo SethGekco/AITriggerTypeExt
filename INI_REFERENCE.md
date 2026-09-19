@@ -790,3 +790,44 @@ usable per rule. Enemy-scoped ones read the team's live **Target** house and
   so per-team evaluation stays cheap.
 - Evaluated each `TeamClass::Update`; the swap takes effect on the team's next
   script step.
+
+## TeamType sidecar — per-team overrides & team-scoped lifecycle
+
+More `[TeamID.AIExt]` keys (same section as ScriptSwitch, parsed in the same
+sweep; everything is opt-in and dormant when unset).
+
+### `TeamRetaliate` — per-team retaliation override
+
+```ini
+[MySiegeTeam.AIExt]
+TeamRetaliate=no    ; this team NEVER drops its orders to retarget an attacker
+```
+
+Antares' `TeamRetaliate=` is global (all AI teams retarget whoever shoots
+them). This overrides it per TeamType — the classic use is siege/suicide/
+capture teams that must stay on task under fire. Suppression does **not**
+suppress the vanilla regroup-on-attack behavior (`Annoyance=yes` teams still
+regroup); it only stops the retarget.
+
+`TeamRetaliate=yes` currently means "follow the global" — it cannot yet FORCE
+retaliation for one team while the Antares global is off (that would require
+replicating Antares' whole targeting block; documented limitation).
+
+### Team-scoped `Destroyed` / `Deleted` messages
+
+```ini
+[MyKirovTeam.AIExt]
+DebugMessageDisplay.Destroyed=NOSTR:Kirov wing lost!
+DebugLog.Destroyed=kirov team wiped
+DebugMessageDisplay.Deleted=NOSTR:Kirov wing completed its run
+DebugLog.Deleted=kirov team finished script
+```
+
+The trigger-scoped lifecycle events key on the **trigger**; these key on the
+**TeamType** and fire for every dying team of that type, no matter which
+trigger (or nothing at all) spawned it. Outcome uses the engine's own
+success flag (`AchievedGreatSuccess`, set by script action `49,0`), so
+Destroyed/Deleted here line up 1:1 with the trigger-scoped events — and both
+fire when both are configured. Honors `DisplayAIWaveMessages` like everything
+else. Note: teams cleaned up at scenario end also pass through the destructor,
+so tagged types may emit a burst of messages at game over.
