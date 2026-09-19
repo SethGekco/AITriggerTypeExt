@@ -236,3 +236,28 @@ attacker (untagged teams still retaliate, since the Antares global is on).
 - [ ] RequiredEnemyDPS + value (F)
 - [ ] Credits / Power / TechLevel / ElapsedTime gates (G)
 - [ ] Team-scoped Destroyed/Deleted + TeamRetaliate=no (H)
+- [ ] FormationKeep hold/resume on a mixed-speed team (I)
+
+---
+
+## Test I — FormationKeep
+
+Tag a deliberately mixed-speed team (e.g. tanks + infantry, or dogs + a slow
+tank) whose script has a long approach march (53 gather or 47 move):
+
+```ini
+[SomeMixedTeamID.AIExt]
+FormationKeep=yes
+FormationKeep.Radius=4
+FormationKeep.Resume=2
+```
+
+Expect, while the team is on its move action:
+- The fast units burst ahead ~4 cells, STOP, wait for the slow ones to close
+  to ~2 cells, move again — a visible caterpillar march that keeps the blob
+  together. Compare an untagged copy of the same taskforce: its fast units
+  should string out and arrive piecemeal.
+- The moment the script flips to an attack action, everyone fights at full
+  speed — nobody may be frozen under fire.
+- If the team dies mid-march, no survivor may remain frozen in place
+  (destructor release).

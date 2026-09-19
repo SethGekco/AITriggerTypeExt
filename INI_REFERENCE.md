@@ -813,6 +813,43 @@ regroup); it only stops the retarget.
 retaliation for one team while the Antares global is off (that would require
 replicating Antares' whole targeting block; documented limitation).
 
+### `FormationKeep` — hold fast units so the slowest keep up
+
+```ini
+[MyMixedTeam.AIExt]
+FormationKeep=yes          ; master switch (default off)
+FormationKeep.Radius=5     ; cells a member may range AHEAD of the rearmost
+                           ; mover before being physically stopped
+FormationKeep.Resume=2     ; hysteresis: a held member resumes once the gap
+                           ; closes to Radius-Resume cells (prevents stop/go
+                           ; flapping). Default 2.
+FormationKeep.Mode=stop    ; v1 supports stop only; match (continuous speed
+                           ; throttling) is parsed but falls back to stop
+                           ; with a log warning
+```
+
+The tool already groups similar speeds into taskforces; this is the runtime
+half for teams that are mixed-speed anyway (escorts, tank+infantry pushes):
+no more tanks arriving at the enemy base one at a time ahead of the infantry.
+
+Semantics:
+- Active only during **move-phase script actions** (3, 47, 53, 54, 58 and the
+  planned 10053/10054). The moment the script reaches any other action —
+  attack, load, unload, guard — every held member is released; held units are
+  never sitting ducks in combat.
+- "Ahead" is measured as remaining distance to each mover's own destination;
+  the rearmost mover sets the pace. Held = `SetSpeedPercentage(0)` — the same
+  stop mechanism the engine ecosystem already uses — restored to full speed on
+  release, on leaving the move phase, and from the team destructor (a dying
+  team never strands frozen members).
+- Members some other system already slowed (speed percentage ≠ 1.0, e.g.
+  attach-effects) are left alone entirely.
+- Evaluated ~2×/second per team, deterministically staggered — MP-safe (pure
+  synced state, no randomness).
+- Known edge: a held member removed from its team by something other than
+  death or team disband could stay stopped until it gets a new order; rare,
+  will get a dedicated release if it shows up in testing.
+
 ### Team-scoped `Destroyed` / `Deleted` messages
 
 ```ini

@@ -949,6 +949,13 @@ public:
     static bool IsTeamRetaliateSuppressed(TeamClass* pTeam);
     static void EmitTeamScopedLifecycle(TeamClass* pTeam);
 
+    // FormationKeep — hold members that outrun the rearmost mover by more
+    // than Radius cells during move-phase script actions (Mode=stop).
+    // Evaluate: each TeamClass update (staggered ~8 frames). Release: from
+    // the destructor hook so a dying team never strands frozen members.
+    static void EvaluateFormationKeep(TeamClass* pTeam);
+    static void ReleaseFormationKeep(TeamClass* pTeam);
+
     // Weight adjustments — called from the RegisterSuccess (success=true) /
     // RegisterFailure (success=false) hooks, BEFORE vanilla runs.
     // Self-delta replaces vanilla's global delta for this trigger; cascades

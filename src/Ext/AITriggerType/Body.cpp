@@ -18,6 +18,7 @@
 #include <WarheadTypeClass.h>
 #include <ScenarioClass.h>
 #include <TeamClass.h>
+#include <FootClass.h>
 #include <TeamTypeClass.h>
 #include <ScriptClass.h>
 #include <ScriptTypeClass.h>
@@ -238,6 +239,10 @@ struct TeamTypeExtras
     std::string DestroyedLog;      // EVERY team of this TeamType, regardless
     std::string DeletedMsg;        // of which trigger (if any) spawned it
     std::string DeletedLog;
+    bool FormationKeep   = false;  // hold outrunners so the slowest keep up
+    int  FormationRadius = 5;      // cells a member may range ahead of the
+                                   // rearmost mover before being held
+    int  FormationResume = 2;      // hysteresis: release at <= Radius - Resume
 };
 static std::map<TeamTypeClass*, TeamTypeExtras> g_TeamExtras;
 
@@ -2295,6 +2300,28 @@ static void ParseScriptSwitch(CCINIClass* const pINI)
         readStr("DebugLog.Destroyed",            ex.DestroyedLog);
         readStr("DebugMessageDisplay.Deleted",   ex.DeletedMsg);
         readStr("DebugLog.Deleted",              ex.DeletedLog);
+        if (pINI->ReadString(section, "FormationKeep", "", buf, sizeof(buf)) > 0)
+        {
+            ex.FormationKeep = (_stricmp(buf, "yes") == 0
+                || _stricmp(buf, "true") == 0 || strcmp(buf, "1") == 0);
+            any = true;
+        }
+        if (pINI->ReadString(section, "FormationKeep.Radius", "", buf, sizeof(buf)) > 0)
+        {
+            int const v = atoi(buf);
+            if (v > 0) ex.FormationRadius = v;
+        }
+        if (pINI->ReadString(section, "FormationKeep.Resume", "", buf, sizeof(buf)) > 0)
+        {
+            int const v = atoi(buf);
+            if (v >= 0) ex.FormationResume = v;
+        }
+        if (pINI->ReadString(section, "FormationKeep.Mode", "", buf, sizeof(buf)) > 0
+            && _stricmp(buf, "stop") != 0)
+        {
+            Debug::Log("[AIExt FormationKeep] %s: Mode=%s not implemented "
+                "(v1 supports stop only) — using stop\n", pTT->ID, buf);
+        }
         if (any)
             g_TeamExtras[pTT] = std::move(ex);
     }
@@ -2499,6 +2526,126 @@ void AITriggerTypeExt::EmitTeamScopedLifecycle(TeamClass* const pTeam)
         Debug::Log("[AIExt Team%s] %s: %s\n",
             success ? "Deleted" : "Destroyed", pTeam->Type->ID, log.c_str());
     }
+}
+
+// ============================================================================
+// FormationKeep — hold outrunners so the slowest members keep up
+// ============================================================================
+
+// Move-type script actions during which FormationKeep applies. Holding units
+// in any other phase (attack, load, guard…) would make them sitting ducks, so
+// everything is released the moment the script leaves this set.
+// 10053/10054 = the planned extended-distance gather/regroup actions.
+static bool IsMovePhaseAction(int const action)
+{
+    switch (action)
+    {
+    case 3:      // move to waypoint
+    case 47:     // move to enemy building
+    case 53:     // gather at enemy base
+    case 54:     // regroup at friendly base
+    case 58:     // move to friendly building
+    case 10053:
+    case 10054:
+        return true;
+    default:
+        return false;
+    }
+}
+
+// Hold rule (Mode=stop): measure every moving member's remaining distance to
+// its own Destination; the REARMOST mover (largest remaining distance) sets
+// the pace. A member more than Radius cells ahead of it is stopped via
+// SetSpeedPercentage(0.0) — the same mechanism Phobos uses to stop passengers
+// — and resumes (1.0) once the gap closes to Radius-Resume (hysteresis, no
+// stop/go flapping). Members another system already slowed (SpeedPercentage
+// not exactly 1.0) are never grabbed; we only ever flip 1.0 -> 0.0 -> 1.0.
+// MP-safe: all inputs are synced sim state, cadence keyed on CreationFrame
+// (never pointer values).
+void AITriggerTypeExt::EvaluateFormationKeep(TeamClass* const pTeam)
+{
+    if (g_TeamExtras.empty() || !pTeam || !pTeam->Type) return;
+    auto const it = g_TeamExtras.find(pTeam->Type);
+    if (it == g_TeamExtras.end() || !it->second.FormationKeep) return;
+    auto const& ex = it->second;
+
+    int const frame = Unsorted::CurrentFrame;
+    if (((frame + pTeam->CreationFrame) & 7) != 0) return;   // ~2x/sec per team
+
+    bool movePhase = false;
+    if (auto const pScript = pTeam->CurrentScript)
+    {
+        if (pScript->Type
+            && pScript->CurrentMission >= 0
+            && pScript->CurrentMission < pScript->Type->ActionsCount)
+        {
+            movePhase = IsMovePhaseAction(
+                pScript->Type->ScriptActions[pScript->CurrentMission].Action);
+        }
+    }
+
+    enum { MaxMembers = 64 };
+    FootClass* members[MaxMembers];
+    double     dist[MaxMembers];       // leptons to own Destination; -1 = none
+    int n = 0;
+    for (auto p = pTeam->FirstUnit; p && n < MaxMembers; p = p->NextTeamMember)
+    {
+        if (!p->IsAlive || p->InLimbo) continue;
+        members[n] = p;
+        dist[n] = -1.0;
+        if (movePhase && p->Destination)
+            dist[n] = p->Location.DistanceFrom(p->Destination->GetCoords());
+        ++n;
+    }
+
+    if (!movePhase || n < 2)
+    {
+        // Out of the move phase (or nothing to pace): release every hold.
+        for (int i = 0; i < n; ++i)
+            if (members[i]->SpeedPercentage == 0.0)
+                members[i]->SetSpeedPercentage(1.0);
+        return;
+    }
+
+    double rearmost = -1.0;
+    for (int i = 0; i < n; ++i)
+        if (dist[i] > rearmost) rearmost = dist[i];
+    if (rearmost < 0.0)
+        return;   // nobody has a destination yet — nothing to pace against
+
+    double const holdAt   = ex.FormationRadius * 256.0;
+    double resumeGap      = (ex.FormationRadius - ex.FormationResume) * 256.0;
+    if (resumeGap < 0.0) resumeGap = 0.0;
+
+    for (int i = 0; i < n; ++i)
+    {
+        auto const pFoot = members[i];
+        bool const held  = pFoot->SpeedPercentage == 0.0;
+        if (dist[i] < 0.0)
+        {
+            // No destination: a held unit with nowhere to go stays released.
+            if (held) pFoot->SetSpeedPercentage(1.0);
+            continue;
+        }
+        double const ahead = rearmost - dist[i];
+        if (!held && pFoot->SpeedPercentage == 1.0 && ahead > holdAt)
+            pFoot->SetSpeedPercentage(0.0);
+        else if (held && ahead <= resumeGap)
+            pFoot->SetSpeedPercentage(1.0);
+    }
+}
+
+// Called from the TeamClass destructor hook: a dying team must never leave
+// members frozen at speed 0 (they outlive the team on the house).
+void AITriggerTypeExt::ReleaseFormationKeep(TeamClass* const pTeam)
+{
+    if (g_TeamExtras.empty() || !pTeam || !pTeam->Type) return;
+    auto const it = g_TeamExtras.find(pTeam->Type);
+    if (it == g_TeamExtras.end() || !it->second.FormationKeep) return;
+
+    for (auto p = pTeam->FirstUnit; p; p = p->NextTeamMember)
+        if (p->IsAlive && p->SpeedPercentage == 0.0)
+            p->SetSpeedPercentage(1.0);
 }
 
 // Replace vanilla's global weight delta for THIS trigger. Runs at the hook

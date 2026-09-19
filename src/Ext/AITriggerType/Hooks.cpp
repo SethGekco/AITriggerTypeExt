@@ -421,6 +421,7 @@ DEFINE_HOOK(0x6E9443, TeamClass_Update_ScriptSwitch, 0x8)
 {
     GET(TeamClass*, pTeam, ESI);
     AITriggerTypeExt::EvaluateScriptSwitch(pTeam);
+    AITriggerTypeExt::EvaluateFormationKeep(pTeam);
     return 0;
 }
 
@@ -442,6 +443,7 @@ DEFINE_HOOK(0x6E9443, TeamClass_Update_ScriptSwitch, 0x8)
 DEFINE_HOOK(0x6E8DE0, TeamClass_DTOR_TeamScopedLifecycle, 0x5)
 {
     GET(TeamClass*, pThis, ECX);
+    AITriggerTypeExt::ReleaseFormationKeep(pThis);   // never strand held units
     AITriggerTypeExt::EmitTeamScopedLifecycle(pThis);
     return 0;
 }
