@@ -194,6 +194,37 @@ once game time passes frame 1500.
 
 ---
 
+## Test H — TeamType sidecar: team-scoped messages + TeamRetaliate
+
+Tag a TeamType the AI reliably builds (any engineer-rush or harass team works).
+Both features live on the TEAM section, not the trigger:
+
+```ini
+[SomeTeamID.AIExt]
+DebugMessageDisplay.Destroyed=NOSTR:TEST_H team wiped
+DebugLog.Destroyed=TEST_H team destroyed
+DebugMessageDisplay.Deleted=NOSTR:TEST_H team finished
+DebugLog.Deleted=TEST_H team completed script
+TeamRetaliate=no
+```
+
+Expect (team-scoped messages):
+- `[AIExt TeamDestroyed] <TeamID>: TEST_H team destroyed` when any team of
+  this type dies before finishing its script — including teams NOT spawned by
+  an AI trigger.
+- `[AIExt TeamDeleted] …` if a team completes its script (action 49,0) —
+  rare for suicide teams, same caveat as trigger-scoped Deleted.
+- Counts should line up 1:1 with the trigger-scoped Destroyed/Deleted for
+  trigger-spawned teams (same engine flag decides both).
+- A burst at game end is normal (scenario teardown destroys all teams).
+
+Expect (TeamRetaliate=no): shoot the tagged team's members while they travel —
+they must KEEP MOVING to their scripted objective instead of turning on the
+attacker (untagged teams still retaliate, since the Antares global is on).
+`Annoyance=yes` regrouping still happens; only the retarget is suppressed.
+
+---
+
 ## Coverage checklist
 
 - [ ] Consider / Cancel (A, B)
@@ -204,3 +235,4 @@ once game time passes frame 1500.
 - [ ] Success/FailureCascadeTargets (E)
 - [ ] RequiredEnemyDPS + value (F)
 - [ ] Credits / Power / TechLevel / ElapsedTime gates (G)
+- [ ] Team-scoped Destroyed/Deleted + TeamRetaliate=no (H)
