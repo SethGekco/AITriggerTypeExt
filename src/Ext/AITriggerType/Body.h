@@ -961,6 +961,11 @@ public:
     // out of it, max(Cells, CellSpread+1) cells when WH.Calc=yes.
     static void EvaluateMissileEvasive(TeamClass* pTeam);
 
+    // GuardMe/Escort — an Escort=yes team shadows the nearest same-house
+    // GuardMe=yes team (scope-checked), holding GuardMe.Radius formation and
+    // guarding in place once there.
+    static void EvaluateEscort(TeamClass* pTeam);
+
     // Weight adjustments — called from the RegisterSuccess (success=true) /
     // RegisterFailure (success=false) hooks, BEFORE vanilla runs.
     // Self-delta replaces vanilla's global delta for this trigger; cascades

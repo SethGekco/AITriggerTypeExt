@@ -255,6 +255,14 @@ struct TeamTypeExtras
     int  MissileEvasiveMinDamage = 100; // detection filter: ignore light
                                         // missiles (AA rockets etc.) or teams
                                         // dance nonstop; 0 = dodge everything
+    bool GuardMe = false;          // this team wants escorts
+    int  GuardMeRadius = 6;        // cells escorts must hold around the team
+    bool GuardMeScopeGlobal = true;// who may escort: global = any Escort team
+                                   // of the house; trigger = only teams whose
+                                   // TeamType shares an AITriggerType with
+                                   // ours (Team1/Team2 siblings)
+    bool Escort = false;           // this team escorts the nearest GuardMe
+                                   // team it is allowed to serve
 };
 static std::map<TeamTypeClass*, TeamTypeExtras> g_TeamExtras;
 
@@ -2355,6 +2363,30 @@ static void ParseScriptSwitch(CCINIClass* const pINI)
             int const v = atoi(buf);
             if (v >= 0) ex.MissileEvasiveMinDamage = v;
         }
+        if (pINI->ReadString(section, "GuardMe", "", buf, sizeof(buf)) > 0)
+        {
+            ex.GuardMe = (_stricmp(buf, "yes") == 0
+                || _stricmp(buf, "true") == 0 || strcmp(buf, "1") == 0);
+            any = true;
+        }
+        if (pINI->ReadString(section, "GuardMe.Radius", "", buf, sizeof(buf)) > 0)
+        {
+            int const v = atoi(buf);
+            if (v > 0) ex.GuardMeRadius = v;
+        }
+        if (pINI->ReadString(section, "GuardMe.Scope", "", buf, sizeof(buf)) > 0)
+        {
+            if      (_stricmp(buf, "trigger") == 0) ex.GuardMeScopeGlobal = false;
+            else if (_stricmp(buf, "global")  == 0) ex.GuardMeScopeGlobal = true;
+            else Debug::Log("[AIExt GuardMe] %s: unknown Scope '%s' "
+                    "(use trigger|global) — using global\n", pTT->ID, buf);
+        }
+        if (pINI->ReadString(section, "Escort", "", buf, sizeof(buf)) > 0)
+        {
+            ex.Escort = (_stricmp(buf, "yes") == 0
+                || _stricmp(buf, "true") == 0 || strcmp(buf, "1") == 0);
+            any = true;
+        }
         if (any)
             g_TeamExtras[pTT] = std::move(ex);
     }
@@ -2811,6 +2843,105 @@ void AITriggerTypeExt::EvaluateMissileEvasive(TeamClass* const pTeam)
             p->SetDestination(pCell, true);
             p->QueueMission(Mission::Move, false);
             break;   // one dodge per member per pass
+        }
+    }
+}
+
+// ============================================================================
+// GuardMe / Escort — priority escort behavior
+// ============================================================================
+
+// First live, on-map member — used as a team's position reference.
+static FootClass* FirstLiveMember(TeamClass* const pTeam)
+{
+    for (auto p = pTeam->FirstUnit; p; p = p->NextTeamMember)
+        if (p->IsAlive && !p->InLimbo)
+            return p;
+    return nullptr;
+}
+
+// trigger-scope check: the two TeamTypes appear together on some
+// AITriggerType (Team1/Team2 — the natural sibling pair a trigger builds).
+static bool AreTriggerSiblings(TeamTypeClass* const a, TeamTypeClass* const b)
+{
+    for (auto const pTrig : AITriggerTypeClass::Array)
+    {
+        if (!pTrig) continue;
+        if ((pTrig->Team1 == a && pTrig->Team2 == b)
+            || (pTrig->Team1 == b && pTrig->Team2 == a))
+            return true;
+    }
+    return false;
+}
+
+// Escort loop: each Escort=yes team serves the NEAREST same-house GuardMe=yes
+// team whose scope admits it. Members outside the guardee's GuardMe.Radius
+// close in (move order to the guardee's position — re-issued each pass, so
+// escorts track a moving guardee); once inside they are flipped from our Move
+// to Area_Guard so they engage attackers instead of standing dumb. If the
+// guardee dies, the next pass re-targets another guardee or, when none is
+// left, stops steering entirely — the team's own script takes back over.
+// Nearest-selection iterates TeamClass::Array in order with strict < —
+// deterministic on every MP peer.
+void AITriggerTypeExt::EvaluateEscort(TeamClass* const pTeam)
+{
+    if (g_TeamExtras.empty() || !pTeam || !pTeam->Type || !pTeam->Owner) return;
+    auto const it = g_TeamExtras.find(pTeam->Type);
+    if (it == g_TeamExtras.end() || !it->second.Escort) return;
+
+    int const frame = Unsorted::CurrentFrame;
+    if (((frame + pTeam->CreationFrame) & 7) != 2) return;   // de-phased ~2Hz
+
+    auto const pSelf = FirstLiveMember(pTeam);
+    if (!pSelf) return;
+
+    // Nearest admissible guardee.
+    TeamClass* pGuardee    = nullptr;
+    FootClass* pGuardeeRef = nullptr;
+    int        guardRadius = 0;
+    double     best        = 0.0;
+    for (auto const pOther : TeamClass::Array)
+    {
+        if (!pOther || pOther == pTeam || pOther->Owner != pTeam->Owner)
+            continue;
+        if (!pOther->Type) continue;
+        auto const oit = g_TeamExtras.find(pOther->Type);
+        if (oit == g_TeamExtras.end() || !oit->second.GuardMe) continue;
+        if (!oit->second.GuardMeScopeGlobal
+            && !AreTriggerSiblings(pTeam->Type, pOther->Type)) continue;
+        auto const pRef = FirstLiveMember(pOther);
+        if (!pRef) continue;
+
+        double const d = pSelf->Location.DistanceFrom(pRef->Location);
+        if (!pGuardee || d < best)
+        {
+            pGuardee    = pOther;
+            pGuardeeRef = pRef;
+            guardRadius = oit->second.GuardMeRadius;
+            best        = d;
+        }
+    }
+    if (!pGuardee) return;   // nobody to guard — script behavior resumes
+
+    auto const pCell = MapClass::Instance.TryGetCellAt(pGuardeeRef->Location);
+    if (!pCell) return;
+    double const radiusLeptons = guardRadius * 256.0;
+
+    for (auto p = pTeam->FirstUnit; p; p = p->NextTeamMember)
+    {
+        if (!p->IsAlive || p->InLimbo) continue;
+        double const d = p->Location.DistanceFrom(pGuardeeRef->Location);
+        if (d > radiusLeptons)
+        {
+            if (p->SpeedPercentage == 0.0)      // never fight a FormationKeep
+                p->SetSpeedPercentage(1.0);     // hold — escort duty wins
+            p->SetDestination(pCell, true);
+            p->QueueMission(Mission::Move, false);
+        }
+        else if (p->CurrentMission == Mission::Move)
+        {
+            // Arrived: guard in place so attackers get engaged.
+            p->QueueMission(Mission::Area_Guard, false);
         }
     }
 }

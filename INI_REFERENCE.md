@@ -885,6 +885,43 @@ Behavior:
   FormationKeep hold (a frozen unit can't dodge — it gets released first).
 - Evaluated ~4×/second per team, deterministically staggered; MP-safe.
 
+### `GuardMe` / `Escort` — priority escort behavior
+
+Two coupled tags: mark a team as *wanting* protection, mark another as the
+*protector*.
+
+```ini
+[MyKirovTeam.AIExt]
+GuardMe=yes           ; this team wants escorts
+GuardMe.Radius=6      ; cells escorts must stay within
+GuardMe.Scope=global  ; global  = any Escort team of the same house (default)
+                      ; trigger = only teams whose TeamType shares an
+                      ;           AITriggerType with this one (Team1/Team2
+                      ;           siblings — put Kirovs on Team1 and the
+                      ;           escort squadron on Team2 of one trigger)
+
+[MyRocketeerEscort.AIExt]
+Escort=yes            ; this team shadows the nearest GuardMe team it may serve
+```
+
+Behavior:
+- The escort team continuously tracks the **nearest** same-house `GuardMe`
+  team its scope admits. Members outside the radius close in on the guardee
+  (re-issued as the guardee moves, so escorts follow a flying Kirov wave);
+  once inside they flip to **Area Guard** and engage anything that attacks.
+- If the guardee dies, the escort re-targets the next nearest guardee; when
+  none remain, steering stops and the escort team's own script takes back
+  over — give escorts a long guard action (`5,N`) as their script so nothing
+  fights the shadowing.
+- Escort duty overrides a FormationKeep hold. Works for ground and air
+  escorts alike. ~2×/second, deterministically staggered, MP-safe.
+- The classic composition: Kirov trigger with Team1 = Kirovs (`GuardMe=yes`),
+  Team2 = Rocketeers (`Escort=yes`, `GuardMe.Scope=trigger` on the Kirovs) —
+  the trigger builds both, and the Rocketeers fly formation automatically.
+- v1 note: the original spec's "protect" *script action* variant (flip into
+  escort duty mid-script) belongs to the future scripts DLL; the tag version
+  here is whole-life escort duty.
+
 ### Team-scoped `Destroyed` / `Deleted` messages
 
 ```ini

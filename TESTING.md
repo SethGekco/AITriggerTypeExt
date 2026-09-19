@@ -291,3 +291,30 @@ Expect:
   watch the unfiltered behavior for comparison.
 - Members mid-dodge resume their team's script once the threat is gone
   (gather/regroup pulls them back together).
+
+---
+
+## Test K — GuardMe / Escort
+
+Pick one AITriggerType with both team slots: Team1 = a slow valuable team
+(Kirovs are perfect), Team2 = a fast escort squadron (Rocketeers, IFVs):
+
+```ini
+[KirovTeamID.AIExt]
+GuardMe=yes
+GuardMe.Radius=6
+GuardMe.Scope=trigger
+
+[RocketeerTeamID.AIExt]
+Escort=yes
+```
+
+Expect:
+- When the trigger fires, the escorts converge on the Kirovs and stay within
+  ~6 cells as the Kirovs fly their route — a visible moving bubble.
+- Shoot at the formation: escorts inside the bubble engage (Area Guard), then
+  fall back into formation as the guardee moves on.
+- Kill the Kirovs: the escorts stop shadowing and resume their own script
+  (or pick another GuardMe team if one is alive and in scope).
+- With GuardMe.Scope=trigger, an unrelated Escort team must NOT adopt the
+  Kirovs — only the Team2 sibling squadron may.
