@@ -190,6 +190,33 @@ struct ScriptSwitchRule
     bool hasEnemyHousesMin = false; int enemyHousesMin = 0;
     bool hasEnemyHousesMax = false; int enemyHousesMax = 0;
     bool hasEnemyUnderAttack = false; int enemyUnderAttackWithin = 0;  // vs pTeam->Target
+    // v2 (2026-09-18) — condition-engine reuse. Enemy-scoped conditions read
+    // the team's live Target house; a rule using them FAILS while the team
+    // has no Target (same policy as EnemyUnderAttack above).
+    bool hasOwnerDPSMin = false; int ownerDPSMin = 0;
+    bool hasOwnerDPSMax = false; int ownerDPSMax = 0;
+    int  ownerDPSLock = 0;                              // 0=all, 1=AA, 2=AG, 3=both
+    bool hasEnemyDPSMin = false; int enemyDPSMin = 0;
+    bool hasEnemyDPSMax = false; int enemyDPSMax = 0;
+    int  enemyDPSLock = 0;
+    bool hasRatioMin = false; int ratioMin = 0;         // owner as % of enemy (100 = matched)
+    bool hasRatioMax = false; int ratioMax = 0;
+    int  ratioLock = 0;
+    bool hasBaseDistMin = false; int baseDistMin = 0;   // cells, owner base <-> Target base
+    bool hasBaseDistMax = false; int baseDistMax = 0;
+    bool hasOwnerRateMin = false; int ownerRateMin = 0; // credits delta over rateWindow
+    bool hasOwnerRateMax = false; int ownerRateMax = 0;
+    bool hasEnemyRateMin = false; int enemyRateMin = 0;
+    bool hasEnemyRateMax = false; int enemyRateMax = 0;
+    int  rateWindow = 150;
+    bool hasZoneAirMin = false; int zoneAirMin = 0;     // owner ZoneInfos sums
+    bool hasZoneAirMax = false; int zoneAirMax = 0;
+    bool hasZoneArmorMin = false; int zoneArmorMin = 0;
+    bool hasZoneArmorMax = false; int zoneArmorMax = 0;
+    bool hasZoneInfMin = false; int zoneInfMin = 0;
+    bool hasZoneInfMax = false; int zoneInfMax = 0;
+    SWReadyGate ownerSW;                                // frames-remaining windows
+    SWReadyGate enemySW;                                // vs pTeam->Target
     std::string debugLog;
     std::string debugDisplay;
 };
@@ -2139,6 +2166,85 @@ static void ParseScriptSwitch(CCINIClass* const pINI)
             snprintf(key, sizeof(key), "ScriptSwitch.%d.RequiredEnemyUnderAttackWithin", i);
             if (pINI->ReadString(section, key, "", buf, sizeof(buf)) > 0) { r.hasEnemyUnderAttack = true; r.enemyUnderAttackWithin = atoi(buf); }
 
+            // ── v2: condition-engine reuse ──────────────────────────────────
+            auto readOptInt = [&](const char* sub, bool& has, int& v)
+            {
+                snprintf(key, sizeof(key), "ScriptSwitch.%d.%s", i, sub);
+                if (pINI->ReadString(section, key, "", buf, sizeof(buf)) > 0) { has = true; v = atoi(buf); }
+            };
+            auto readLock = [&](const char* sub, int& mask)
+            {
+                snprintf(key, sizeof(key), "ScriptSwitch.%d.%s", i, sub);
+                if (pINI->ReadString(section, key, "", buf, sizeof(buf)) <= 0) return;
+                mask = 0;
+                char* c2 = nullptr;
+                for (char* tok = strtok_s(buf, ",", &c2); tok; tok = strtok_s(nullptr, ",", &c2))
+                {
+                    while (*tok == ' ' || *tok == '\t') ++tok;
+                    if      (_strnicmp(tok, "AA", 2) == 0) mask |= 1;
+                    else if (_strnicmp(tok, "AG", 2) == 0) mask |= 2;
+                }
+            };
+            auto readIntList = [&](const char* sub, std::vector<int>& out)
+            {
+                snprintf(key, sizeof(key), "ScriptSwitch.%d.%s", i, sub);
+                if (pINI->ReadString(section, key, "", buf, sizeof(buf)) <= 0) return;
+                char* c2 = nullptr;
+                for (char* tok = strtok_s(buf, ",", &c2); tok; tok = strtok_s(nullptr, ",", &c2))
+                    out.push_back(atoi(tok));
+            };
+            auto readSWGateRule = [&](const char* types, const char* rmin,
+                                      const char* rmax, SWReadyGate& gate)
+            {
+                snprintf(key, sizeof(key), "ScriptSwitch.%d.%s", i, types);
+                if (pINI->ReadString(section, key, "", buf, sizeof(buf)) > 0)
+                {
+                    char* c2 = nullptr;
+                    for (char* tok = strtok_s(buf, ",", &c2); tok; tok = strtok_s(nullptr, ",", &c2))
+                    {
+                        while (*tok == ' ' || *tok == '\t') ++tok;
+                        char* end = tok + strlen(tok);
+                        while (end > tok && (end[-1] == ' ' || end[-1] == '\t')) *(--end) = 0;
+                        if (auto* p = SuperWeaponTypeClass::Find(tok)) gate.Types.push_back(p);
+                    }
+                }
+                readIntList(rmin, gate.ReadyMin);
+                readIntList(rmax, gate.ReadyMax);
+            };
+
+            readOptInt("RequiredOwnerDPSMin", r.hasOwnerDPSMin, r.ownerDPSMin);
+            readOptInt("RequiredOwnerDPSMax", r.hasOwnerDPSMax, r.ownerDPSMax);
+            readLock  ("RequiredOwnerDPSLock", r.ownerDPSLock);
+            readOptInt("RequiredEnemyDPSMin", r.hasEnemyDPSMin, r.enemyDPSMin);
+            readOptInt("RequiredEnemyDPSMax", r.hasEnemyDPSMax, r.enemyDPSMax);
+            readLock  ("RequiredEnemyDPSLock", r.enemyDPSLock);
+            readOptInt("RequiredDPSRatioMin", r.hasRatioMin, r.ratioMin);
+            readOptInt("RequiredDPSRatioMax", r.hasRatioMax, r.ratioMax);
+            readLock  ("RequiredDPSRatioLock", r.ratioLock);
+            readOptInt("RequiredBaseDistanceMin", r.hasBaseDistMin, r.baseDistMin);
+            readOptInt("RequiredBaseDistanceMax", r.hasBaseDistMax, r.baseDistMax);
+            readOptInt("RequiredOwnerCreditsRateMin", r.hasOwnerRateMin, r.ownerRateMin);
+            readOptInt("RequiredOwnerCreditsRateMax", r.hasOwnerRateMax, r.ownerRateMax);
+            readOptInt("RequiredEnemyCreditsRateMin", r.hasEnemyRateMin, r.enemyRateMin);
+            readOptInt("RequiredEnemyCreditsRateMax", r.hasEnemyRateMax, r.enemyRateMax);
+            {
+                bool hasWin = false; int win = 0;
+                readOptInt("RequiredCreditsRateWindow", hasWin, win);
+                if (hasWin && win > 0) r.rateWindow = win;
+            }
+            readOptInt("RequiredOwnerZoneThreatAirMin",      r.hasZoneAirMin,   r.zoneAirMin);
+            readOptInt("RequiredOwnerZoneThreatAirMax",      r.hasZoneAirMax,   r.zoneAirMax);
+            readOptInt("RequiredOwnerZoneThreatArmorMin",    r.hasZoneArmorMin, r.zoneArmorMin);
+            readOptInt("RequiredOwnerZoneThreatArmorMax",    r.hasZoneArmorMax, r.zoneArmorMax);
+            readOptInt("RequiredOwnerZoneThreatInfantryMin", r.hasZoneInfMin,   r.zoneInfMin);
+            readOptInt("RequiredOwnerZoneThreatInfantryMax", r.hasZoneInfMax,   r.zoneInfMax);
+            readSWGateRule("RequiredOwnerSuperWeapons",
+                           "RequiredOwnerSuperWeaponsReadyMin",
+                           "RequiredOwnerSuperWeaponsReadyMax", r.ownerSW);
+            readSWGateRule("RequiredEnemySuperWeapons",
+                           "RequiredEnemySuperWeaponsReadyMin",
+                           "RequiredEnemySuperWeaponsReadyMax", r.enemySW);
+
             snprintf(key, sizeof(key), "ScriptSwitch.%d.DebugLog", i);
             if (pINI->ReadString(section, key, "", buf, sizeof(buf)) > 0) r.debugLog = buf;
             snprintf(key, sizeof(key), "ScriptSwitch.%d.DebugMessageDisplay", i);
@@ -2210,6 +2316,84 @@ void AITriggerTypeExt::EvaluateScriptSwitch(TeamClass* const pTeam)
             HouseClass* const pTarget = pTeam->Target;
             if (!pTarget || pTarget->LATime <= 0
                 || (frame - pTarget->LATime) > r.enemyUnderAttackWithin) continue;
+        }
+
+        // ── v2 conditions — condition-engine reuse. ComputeHouseDPS is
+        // cached per house+scope per frame, so per-team evaluation is cheap.
+        // Enemy-scoped conditions fail while the team has no Target house.
+        if (r.hasOwnerDPSMin || r.hasOwnerDPSMax)
+        {
+            double const dps = ExtData::ComputeHouseDPS(pOwner, r.ownerDPSLock, nullptr, -1);
+            if (r.hasOwnerDPSMin && dps < r.ownerDPSMin) continue;
+            if (r.hasOwnerDPSMax && r.ownerDPSMax != -1 && dps > r.ownerDPSMax) continue;
+        }
+        if (r.hasEnemyDPSMin || r.hasEnemyDPSMax)
+        {
+            HouseClass* const pT = pTeam->Target;
+            if (!pT) continue;
+            double const dps = ExtData::ComputeHouseDPS(pT, r.enemyDPSLock, nullptr, -1);
+            if (r.hasEnemyDPSMin && dps < r.enemyDPSMin) continue;
+            if (r.hasEnemyDPSMax && r.enemyDPSMax != -1 && dps > r.enemyDPSMax) continue;
+        }
+        if (r.hasRatioMin || r.hasRatioMax)
+        {
+            HouseClass* const pT = pTeam->Target;
+            if (!pT) continue;
+            // Cross-multiplied like the trigger gate: owner as % of enemy.
+            double const o = ExtData::ComputeHouseDPS(pOwner, r.ratioLock, nullptr, -1);
+            double const e = ExtData::ComputeHouseDPS(pT, r.ratioLock, nullptr, -1);
+            if (r.hasRatioMin && o * 100.0 < r.ratioMin * e) continue;
+            if (r.hasRatioMax && r.ratioMax != -1 && o * 100.0 > r.ratioMax * e) continue;
+        }
+        if (r.hasBaseDistMin || r.hasBaseDistMax)
+        {
+            HouseClass* const pT = pTeam->Target;
+            if (!pT) continue;
+            auto const oc = pOwner->GetBaseCenter();
+            auto const ec = pT->GetBaseCenter();
+            if (oc == CellStruct::Empty || ec == CellStruct::Empty) continue;
+            int const dist = static_cast<int>(oc.DistanceFrom(ec));
+            if (r.hasBaseDistMin && dist < r.baseDistMin) continue;
+            if (r.hasBaseDistMax && r.baseDistMax != -1 && dist > r.baseDistMax) continue;
+        }
+        if (r.hasOwnerRateMin || r.hasOwnerRateMax)
+        {
+            int const rate = ComputeCreditsRate(pOwner, r.rateWindow);
+            if (r.hasOwnerRateMin && rate < r.ownerRateMin) continue;
+            if (r.hasOwnerRateMax && rate > r.ownerRateMax) continue;
+        }
+        if (r.hasEnemyRateMin || r.hasEnemyRateMax)
+        {
+            HouseClass* const pT = pTeam->Target;
+            if (!pT) continue;
+            int const rate = ComputeCreditsRate(pT, r.rateWindow);
+            if (r.hasEnemyRateMin && rate < r.enemyRateMin) continue;
+            if (r.hasEnemyRateMax && rate > r.enemyRateMax) continue;
+        }
+        if (r.hasZoneAirMin || r.hasZoneAirMax)
+        {
+            int const v = SumZoneThreat(pOwner, AIExtZoneKind::Air);
+            if (r.hasZoneAirMin && v < r.zoneAirMin) continue;
+            if (r.hasZoneAirMax && r.zoneAirMax != -1 && v > r.zoneAirMax) continue;
+        }
+        if (r.hasZoneArmorMin || r.hasZoneArmorMax)
+        {
+            int const v = SumZoneThreat(pOwner, AIExtZoneKind::Armor);
+            if (r.hasZoneArmorMin && v < r.zoneArmorMin) continue;
+            if (r.hasZoneArmorMax && r.zoneArmorMax != -1 && v > r.zoneArmorMax) continue;
+        }
+        if (r.hasZoneInfMin || r.hasZoneInfMax)
+        {
+            int const v = SumZoneThreat(pOwner, AIExtZoneKind::Infantry);
+            if (r.hasZoneInfMin && v < r.zoneInfMin) continue;
+            if (r.hasZoneInfMax && r.zoneInfMax != -1 && v > r.zoneInfMax) continue;
+        }
+        if (!r.ownerSW.empty()
+            && !ExtData::CheckHouseSuperWeapons(pOwner, r.ownerSW)) continue;
+        if (!r.enemySW.empty())
+        {
+            HouseClass* const pT = pTeam->Target;
+            if (!pT || !ExtData::CheckHouseSuperWeapons(pT, r.enemySW)) continue;
         }
 
         // First matching rule wins. Swap only if not already on that script.

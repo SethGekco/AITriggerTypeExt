@@ -622,6 +622,10 @@ Global toggle in **rulesmd.ini** (not the trigger section):
 ```ini
 [Debug]
 DisplayAIWaveMessages=both   ; off (default) | yes/overlay | log | both
+AIExtDiagTrace=no            ; per-ConditionMet diagnostic trace. MUTED by
+                             ; default since 2026-09-18 — it emits one line per
+                             ; trigger evaluation (~4.3M lines / 322MB per
+                             ; session). Only turn on for short focused runs.
 ```
 `overlay` = in-game HUD messages only, `log` = debug.log only, `both` = both.
 
@@ -756,6 +760,22 @@ ScriptSwitch.1.RequiredElapsedTimeMin=18000  ; after 20 minutes, always regroup 
 | `RequiredElapsedTimeMin` / `Max` | frame window since scenario start (15 frames ≈ 1s) |
 | `DebugLog` / `DebugMessageDisplay` | fired (log / HUD) when this rule actually swaps the script |
 
+**v2 conditions (2026-09-18)** — the trigger engine's heavier vocabulary, now
+usable per rule. Enemy-scoped ones read the team's live **Target** house and
+**fail while the team has no Target**:
+| Key | Meaning |
+|---|---|
+| `RequiredOwnerDPSMin` / `Max` + `RequiredOwnerDPSLock` | owner live DPS window; Lock=`AA`,`AG` scopes by projectile flags |
+| `RequiredEnemyDPSMin` / `Max` + `RequiredEnemyDPSLock` | Target house live DPS window |
+| `RequiredDPSRatioMin` / `Max` + `RequiredDPSRatioLock` | owner DPS as % of Target DPS (100 = matched; cross-multiplied) |
+| `RequiredBaseDistanceMin` / `Max` | cells, owner base center ↔ Target base center |
+| `RequiredOwnerCreditsRateMin` / `Max` | owner credits delta over the window (momentum) |
+| `RequiredEnemyCreditsRateMin` / `Max` | Target credits delta over the window |
+| `RequiredCreditsRateWindow` | sample window in frames for the two rates (default 150 = 10s) |
+| `RequiredOwnerZoneThreat{Air,Armor,Infantry}Min` / `Max` | owner's summed ZoneInfos threat (same scale as the trigger gates) |
+| `RequiredOwnerSuperWeapons` + `ReadyMin`/`ReadyMax` | owner SW frames-remaining windows (parallel lists; `ReadyMax=0` = fully charged) |
+| `RequiredEnemySuperWeapons` + `ReadyMin`/`ReadyMax` | same vs the Target house ("their nuke is nearly up → switch to defend") |
+
 **Semantics & notes:**
 - **Opt-in and dormant.** A TeamType with no `ScriptSwitch.*` keys has zero
   runtime effect — the feature costs nothing on stock setups.
@@ -763,9 +783,10 @@ ScriptSwitch.1.RequiredElapsedTimeMin=18000  ; after 20 minutes, always regroup 
   matches and the team is on its script, later rules aren't considered that tick.
 - **No thrash.** A rule only swaps when the team isn't already on its target
   script, so a persistently-true condition swaps once and stays.
-- The condition set is intentionally small in v1; it shares the engine's live
-  power / structure / time reads. Broader reuse of the full `Required*`
-  vocabulary (enemy DPS, superweapon readiness, base distance, credit momentum)
-  is the planned next iteration.
+- v1 shipped the small live-state set; **v2 (2026-09-18) delivered the broader
+  `Required*` reuse** — DPS (owner/enemy/ratio + Lock), base distance, credit
+  momentum, owner zone threat, and superweapon readiness (see the v2 table
+  above). All evaluators are shared with the trigger engine and frame-cached,
+  so per-team evaluation stays cheap.
 - Evaluated each `TeamClass::Update`; the swap takes effect on the team's next
   script step.

@@ -204,11 +204,32 @@ DEFINE_HOOK(0x41EAC0, AITriggerTypeClass_ConditionMet_Gate, 0x5)
 // ============================================================================
 // DIAGNOSTIC hook — 0x41E720 entry, size 6  ✅ CONFIRMED
 // Shows actual building counts on owner and enemy houses.
+// MUTED by default (2026-09-18): fires per ConditionMet call — ~4.3M lines /
+// 322MB of debug.log per session. Re-enable with [Debug] AIExtDiagTrace=yes.
 // ============================================================================
+
+static bool IsDiagTraceEnabled()
+{
+    static bool cached = false;
+    static bool loaded = false;
+    if (loaded)
+        return cached;
+    if (!CCINIClass::INI_Rules)
+        return false;
+    char buf[8] = {0};
+    CCINIClass::INI_Rules->ReadString(
+        "Debug", "AIExtDiagTrace", "no", buf, sizeof(buf));
+    cached = (_stricmp(buf, "yes") == 0 || _stricmp(buf, "true") == 0
+              || strcmp(buf, "1") == 0);
+    loaded = true;
+    return cached;
+}
 
 DEFINE_HOOK(0x41E720, AITriggerTypeClass_ConditionMet_Diag, 0x6)
 {
     GET(AITriggerTypeClass*, pThis, ECX);
+
+    if (!IsDiagTraceEnabled()) return 0;
 
     auto const pExt = AITriggerTypeExt::ExtMap.Find(pThis);
     if (!pExt) return 0;
