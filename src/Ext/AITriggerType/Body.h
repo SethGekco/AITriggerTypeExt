@@ -813,7 +813,11 @@ public:
             HouseClass* pCallingHouse,
             HouseClass* pEngineTarget) const;
 
-        // Per-house scalar / list checkers
+        // Per-house scalar / list checkers.
+        // PUBLIC: static + stateless — shared with the ScriptSwitch v2
+        // evaluator (EvaluateScriptSwitch is on the enclosing class, which has
+        // no access to ExtData privates).
+    public:
         static bool CheckHouseBuildings(
             HouseClass* pHouse,
             const TypeCountGate<BuildingTypeClass>& gate);
@@ -885,6 +889,7 @@ public:
 
         // Sum the count of listed RequiredEnemyBuildings types on a house
         // (used for Most/Least selection)
+    private:
         int SumBuildingCount(HouseClass* pHouse) const;
         int SumUnitCount(HouseClass* pHouse) const;
     };
