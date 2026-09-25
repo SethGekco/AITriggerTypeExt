@@ -3353,7 +3353,7 @@ void AITriggerTypeExt::ExtData::EvaluateAndReport(HouseClass* pOwner, HouseClass
             int const ez = MapClass::Instance.GetMovementZoneType(ec, mz, false);
             return (oz >= 0 && ez >= 0 && oz == ez) ? 1 : 0;
         };
-        Nullable<int> const reqMin = 1;
+        Nullable<int> const reqMin(1);
         if (RequiresGroundPathToEnemy)
             BuildScalarDetail("RequiresGroundPathToEnemy", evalZone(MovementZone::Normal),
                 reqMin, Nullable<int>(), LastCheckReport);
