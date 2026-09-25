@@ -582,6 +582,8 @@ void AITriggerTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
     ReadDPSLock    (exINI, section, "RequiredTeamRangeRatioLock",   TeamRangeRatioLock);
     ReadNullableInt(exINI, section, "RequiredBaseDistanceMin",      BaseDistanceMin);
     ReadNullableInt(exINI, section, "RequiredBaseDistanceMax",      BaseDistanceMax);
+    ReadBoolFlag   (exINI, section, "RequiresGroundPathToEnemy",    RequiresGroundPathToEnemy);
+    ReadBoolFlag   (exINI, section, "RequiresNavalPathToEnemy",     RequiresNavalPathToEnemy);
     ReadNullableInt(exINI, section, "RequiredOwnerCreditsRateMin",  OwnerCreditsRateMin);
     ReadNullableInt(exINI, section, "RequiredOwnerCreditsRateMax",  OwnerCreditsRateMax);
     ReadNullableInt(exINI, section, "RequiredEnemyCreditsRateMin",  EnemyCreditsRateMin);
@@ -1421,6 +1423,7 @@ bool AITriggerTypeExt::ExtData::ExtraPrerequisitesMet(
     if (!CheckDPSRatio(pCallingHouse, pTargetHouse)) return false;
     if (!CheckTeamRangeRatio(pCallingHouse, pTargetHouse)) return false;
     if (!CheckBaseDistance(pCallingHouse, pTargetHouse)) return false;
+    if (!CheckPathToEnemy(pCallingHouse, pTargetHouse))  return false;
     if (!CheckCreditsRate(pCallingHouse, pTargetHouse)) return false;
     if (!CheckStructureOnMap())                   return false;
     if (!CheckCooldown())                         return false;
@@ -1524,6 +1527,43 @@ bool AITriggerTypeExt::ExtData::CheckBaseDistance(
     if (BaseDistanceMax.isset() && BaseDistanceMax.Get() != -1
         && dist > BaseDistanceMax.Get())
         return false;
+    return true;
+}
+
+// RequiresGroundPathToEnemy/NavalPathToEnemy — vetoes a rush trigger when the
+// owner's base sits in a different YR movement zone than the enemy's, e.g. a
+// ground rush aimed at an island enemy, or a naval strike from a landlocked
+// house. MapClass::GetMovementZoneType (0x56D230, a real YRpp thunk — not a
+// live A* query) returns the id of the precomputed connectivity region a cell
+// belongs to for a given MovementZone; two cells are reachable by that
+// movement type iff their zone ids match. Missing base info never vetoes —
+// only an established, DISCONNECTED pair does.
+bool AITriggerTypeExt::ExtData::CheckPathToEnemy(
+    HouseClass* const pCallingHouse, HouseClass* const pTargetHouse) const
+{
+    if (!RequiresGroundPathToEnemy && !RequiresNavalPathToEnemy) return true;
+    if (!pCallingHouse) return true;
+
+    auto const pEnemy = ResolveTargetHouse(pCallingHouse, pTargetHouse);
+    if (!pEnemy) return true;
+
+    auto const ownCenter   = pCallingHouse->GetBaseCenter();
+    auto const enemyCenter = pEnemy->GetBaseCenter();
+    if (ownCenter == CellStruct::Empty || enemyCenter == CellStruct::Empty) return true;
+
+    auto& map = MapClass::Instance;
+    if (RequiresGroundPathToEnemy)
+    {
+        int const ownZone   = map.GetMovementZoneType(ownCenter,   MovementZone::Normal, false);
+        int const enemyZone = map.GetMovementZoneType(enemyCenter, MovementZone::Normal, false);
+        if (ownZone < 0 || enemyZone < 0 || ownZone != enemyZone) return false;
+    }
+    if (RequiresNavalPathToEnemy)
+    {
+        int const ownZone   = map.GetMovementZoneType(ownCenter,   MovementZone::Water, false);
+        int const enemyZone = map.GetMovementZoneType(enemyCenter, MovementZone::Water, false);
+        if (ownZone < 0 || enemyZone < 0 || ownZone != enemyZone) return false;
+    }
     return true;
 }
 
@@ -3298,6 +3338,28 @@ void AITriggerTypeExt::ExtData::EvaluateAndReport(HouseClass* pOwner, HouseClass
         }
         BuildScalarDetail("RequiredBaseDistance", dist,
             BaseDistanceMin, BaseDistanceMax, LastCheckReport);
+    }
+
+    // ─── Movement-zone reachability (1 = connected, 0 = not) ─────────────
+    if (RequiresGroundPathToEnemy || RequiresNavalPathToEnemy)
+    {
+        auto const evalZone = [&](MovementZone mz) -> int
+        {
+            if (!pEnemy) return 1;
+            auto const oc = pOwner->GetBaseCenter();
+            auto const ec = pEnemy->GetBaseCenter();
+            if (oc == CellStruct::Empty || ec == CellStruct::Empty) return 1;
+            int const oz = MapClass::Instance.GetMovementZoneType(oc, mz, false);
+            int const ez = MapClass::Instance.GetMovementZoneType(ec, mz, false);
+            return (oz >= 0 && ez >= 0 && oz == ez) ? 1 : 0;
+        };
+        Nullable<int> const reqMin = 1;
+        if (RequiresGroundPathToEnemy)
+            BuildScalarDetail("RequiresGroundPathToEnemy", evalZone(MovementZone::Normal),
+                reqMin, Nullable<int>(), LastCheckReport);
+        if (RequiresNavalPathToEnemy)
+            BuildScalarDetail("RequiresNavalPathToEnemy", evalZone(MovementZone::Water),
+                reqMin, Nullable<int>(), LastCheckReport);
     }
 
     // ─── Credit momentum (net Balance change over the window) ───────────

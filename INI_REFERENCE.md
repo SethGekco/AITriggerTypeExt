@@ -251,6 +251,31 @@ single enemy resolves (`Any`/`All` modes) or a base center is unset, distance is
 `0`, which trivially satisfies `Min`. Shows in the detail report as
 `RequiredBaseDistance(<cells>):min,max`.
 
+### Reachability — is the enemy base even connected?
+
+`RequiresGroundPathToEnemy` / `RequiresNavalPathToEnemy` veto a trigger when the
+owner's base and the resolved enemy's base don't share a **movement zone** —
+YR's own precomputed connectivity grid (one region id per `MovementZone` per
+cell, recomputed when the map/bridges change). This is a cheap lookup, **not**
+a live A* pathfind: two base centers are reachable by that movement type iff
+their zone ids are equal.
+```ini
+[MyGroundRush.AIExt]
+RequiresGroundPathToEnemy=yes   ; skip this trigger entirely at an island enemy
+
+[MyNavalStrike.AIExt]
+RequiresNavalPathToEnemy=yes    ; skip if the owner has no water route at all
+```
+Missing base info (no resolved enemy, or either base center unset) never
+vetoes — only an established, disconnected pair does. Shows in the detail
+report as `RequiresGroundPathToEnemy(1|0):1,-1` (`1` = connected). Combine with
+`RequiredBaseDistance` for "far AND reachable" gating, or leave an aerial-only
+trigger untagged so it's always eligible regardless of the ground/water
+picture. Note: naval reachability is checked at the base center cell itself
+(via the `Water` movement zone) — a landlocked base with a short land bridge
+to a dock may read as disconnected even if a modder would call it "coastal";
+field-verify before relying on the naval variant for a tight map.
+
 ### Economy — credit momentum
 
 `RequiredOwnerCreditsRate*` / `RequiredEnemyCreditsRate*` gate on the **net change

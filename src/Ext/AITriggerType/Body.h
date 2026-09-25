@@ -400,6 +400,14 @@ public:
         Nullable<int> BaseDistanceMin;
         Nullable<int> BaseDistanceMax;
 
+        // RequiresGroundPathToEnemy/NavalPathToEnemy=yes — veto unless the
+        // owner's and enemy's base centers sit in the same precomputed YR
+        // movement zone (a static reachability grid the engine already
+        // maintains per MovementZone, not a live A* pathfind). Stops ground
+        // rushes from being dispatched at an island enemy, and vice versa.
+        bool RequiresGroundPathToEnemy = false;
+        bool RequiresNavalPathToEnemy  = false;
+
         // Credit momentum: net change in a house's Balance over the last
         // CreditsRateWindow frames (signed). Positive = gaining (harvesting /
         // booming), negative = spending/bleeding. "Strike while the enemy just
@@ -795,6 +803,7 @@ public:
         bool CheckDPSRatio(HouseClass* pCallingHouse, HouseClass* pTargetHouse) const;
         bool CheckTeamRangeRatio(HouseClass* pCallingHouse, HouseClass* pTargetHouse) const;
         bool CheckBaseDistance(HouseClass* pCallingHouse, HouseClass* pTargetHouse) const;
+        bool CheckPathToEnemy(HouseClass* pCallingHouse, HouseClass* pTargetHouse) const;
         bool CheckCreditsRate(HouseClass* pCallingHouse, HouseClass* pTargetHouse) const;
         bool CheckStructureOnMap() const;
         bool CheckCooldown() const;

@@ -354,3 +354,35 @@ Expect:
   the stop condition.
 - Good stress case: pair with a weak early-game rush trigger and watch it
   become a genuine flood instead of a one-and-done poke.
+
+---
+
+## Test M — RequiresGroundPathToEnemy / RequiresNavalPathToEnemy
+
+Needs a map with a real land/water split (an island enemy, or a landlocked
+AI with no dock access). Tag a ground rush and a naval strike:
+
+```ini
+[MyGroundRush.AIExt]
+RequiresGroundPathToEnemy=yes
+DebugLog=1
+
+[MyNavalStrike.AIExt]
+RequiresNavalPathToEnemy=yes
+DebugLog=1
+```
+
+Expect:
+- On a fully-connected land map, both triggers behave exactly like untagged
+  copies — the gate only ever REMOVES eligibility, never adds it.
+- Against an island enemy (no land bridge), `MyGroundRush` must never fire —
+  check the per-gate detail log for `RequiresGroundPathToEnemy(0):1,-1`
+  (0 = disconnected) at evaluation time, vs `(1)` on a connected map.
+- On a landlocked AI house (no coastline at all), `MyNavalStrike` should
+  likewise never fire.
+- Sanity check the OTHER direction too: a ground rush at a NON-island enemy
+  on the same map must still fire normally — confirms the gate isn't
+  accidentally vetoing everything.
+- The naval variant is the less-certain one (see INI_REFERENCE.md caveat on
+  shore-cell zone semantics) — if a coastal AI's naval trigger unexpectedly
+  never fires, that's the edge case to report back.
