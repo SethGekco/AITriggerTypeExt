@@ -321,3 +321,36 @@ Expect:
   (or pick another GuardMe team if one is alive and in scope).
 - With GuardMe.Scope=trigger, an unrelated Escort team must NOT adopt the
   Kirovs — only the Team2 sibling squadron may.
+
+---
+
+## Test L — Steamroll
+
+Tag a cheap, fast-build taskforce (infantry rush or a light-vehicle rush is
+ideal — the effect is easiest to read when units queue quickly) on a trigger
+with generous weight so it fires readily:
+
+```ini
+[SomeRushTeamID.AIExt]
+Steamroll=yes
+```
+
+Do **not** also set `Reinforce=yes` in the TeamType's own vanilla section —
+Steamroll sets it for you; adding it again is harmless but redundant.
+
+Expect:
+- The team is built once, sent off to fight/attrit, and — unlike a normal
+  one-shot taskforce — the AI keeps queuing replacements into the SAME team
+  indefinitely, as long as at least one instance is alive. Compare an
+  untagged copy of the same taskforce/trigger: it builds once and never
+  refills.
+- Watch factory load: a Steamroll team competes for build slots like any
+  other production, so on a factory-starved house it may refill slowly (this
+  is expected — Steamroll doesn't grant priority, just removes the "full"
+  stop condition).
+- Disable or destroy the owning trigger (or let a script self-disable it) —
+  refilling must stop immediately once the last team instance of that type
+  is destroyed. There is no separate "off" switch; the team's own death is
+  the stop condition.
+- Good stress case: pair with a weak early-game rush trigger and watch it
+  become a genuine flood instead of a one-and-done poke.

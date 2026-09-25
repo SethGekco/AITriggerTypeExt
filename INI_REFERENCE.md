@@ -949,3 +949,31 @@ Destroyed/Deleted here line up 1:1 with the trigger-scoped events — and both
 fire when both are configured. Honors `DisplayAIWaveMessages` like everything
 else. Note: teams cleaned up at scenario end also pass through the destructor,
 so tagged types may emit a burst of messages at game over.
+
+### `Steamroll` — flood production, never "full strength"
+
+```ini
+[MyRushTeam.AIExt]
+Steamroll=yes
+```
+
+Vanilla's `Reinforce=yes` (modenc) keeps producing replacements for a team
+until it reaches full strength, then stops. `Steamroll=yes` is the same
+refill loop with the stop condition removed: the team is **never** considered
+full, so the AI keeps recruiting into it for as long as the team exists —
+useful for an endless-flood rush wave or garrison infantry that never
+stops backfilling.
+
+Behavior:
+- **Implies `Reinforce`** — set automatically on the TeamType at load time,
+  so you don't need `Reinforce=yes` alongside it (harmless if you do).
+- Every tick, forces the team's `IsFullStrength` state to false. This is a
+  plain data correction, not a redirect, so it composes with whatever reads
+  that state afterward — vanilla's own refill check or Antares' equivalent
+  MacroHacks gate — regardless of load order.
+- **Stops itself** the moment the team is destroyed — there is nothing left
+  to force. Pair with a script that disbands/disables the trigger on a
+  condition (e.g. "no enemy buildings left") to end the flood; Steamroll has
+  no built-in stop condition of its own.
+- Does not bypass house-wide caps (`TotalAITeamCap` and similar) — those
+  still bound how much the AI builds overall.

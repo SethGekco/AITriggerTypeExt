@@ -424,6 +424,7 @@ DEFINE_HOOK(0x6E9443, TeamClass_Update_ScriptSwitch, 0x8)
     AITriggerTypeExt::EvaluateFormationKeep(pTeam);
     AITriggerTypeExt::EvaluateMissileEvasive(pTeam);
     AITriggerTypeExt::EvaluateEscort(pTeam);
+    AITriggerTypeExt::EvaluateSteamroll(pTeam);
     return 0;
 }
 

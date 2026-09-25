@@ -966,6 +966,13 @@ public:
     // guarding in place once there.
     static void EvaluateEscort(TeamClass* pTeam);
 
+    // Steamroll — like Reinforce, but the taskforce is never "full": forces
+    // IsFullStrength false every tick so the AI keeps recruiting into this
+    // team for as long as it lives. Parse time also force-sets the TeamType's
+    // own Reinforce=true (Steamroll implies it — the vanilla refill loop only
+    // runs at all when Reinforce is set).
+    static void EvaluateSteamroll(TeamClass* pTeam);
+
     // Weight adjustments — called from the RegisterSuccess (success=true) /
     // RegisterFailure (success=false) hooks, BEFORE vanilla runs.
     // Self-delta replaces vanilla's global delta for this trigger; cascades

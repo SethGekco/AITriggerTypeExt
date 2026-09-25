@@ -263,6 +263,7 @@ struct TeamTypeExtras
                                    // ours (Team1/Team2 siblings)
     bool Escort = false;           // this team escorts the nearest GuardMe
                                    // team it is allowed to serve
+    bool Steamroll = false;        // never full strength — recruit forever
 };
 static std::map<TeamTypeClass*, TeamTypeExtras> g_TeamExtras;
 
@@ -2387,6 +2388,16 @@ static void ParseScriptSwitch(CCINIClass* const pINI)
                 || _stricmp(buf, "true") == 0 || strcmp(buf, "1") == 0);
             any = true;
         }
+        if (pINI->ReadString(section, "Steamroll", "", buf, sizeof(buf)) > 0)
+        {
+            ex.Steamroll = (_stricmp(buf, "yes") == 0
+                || _stricmp(buf, "true") == 0 || strcmp(buf, "1") == 0);
+            any = true;
+            // Steamroll implies Reinforce — vanilla's own refill loop only
+            // ever runs for a team whose TeamType has Reinforce set; without
+            // this, forcing IsFullStrength false later has nothing to act on.
+            if (ex.Steamroll) pTT->Reinforce = true;
+        }
         if (any)
             g_TeamExtras[pTT] = std::move(ex);
     }
@@ -2954,6 +2965,21 @@ void AITriggerTypeExt::EvaluateEscort(TeamClass* const pTeam)
             p->QueueMission(Mission::Area_Guard, false);
         }
     }
+}
+
+// Steamroll: force IsFullStrength false every tick a Steamroll=yes team is
+// alive, so vanilla's own Reinforce refill loop (which parse time already
+// force-enabled on this TeamType) never sees "done" and keeps recruiting.
+// A plain field correction, not a control-flow hook — it composes with
+// whatever reads IsFullStrength afterward (vanilla or Antares' MacroHacks
+// gate `!Type->Reinforce || IsFullStrength`), and it naturally stops the
+// moment the team itself is destroyed, since there is nothing left to force.
+void AITriggerTypeExt::EvaluateSteamroll(TeamClass* const pTeam)
+{
+    if (g_TeamExtras.empty() || !pTeam || !pTeam->Type) return;
+    auto const it = g_TeamExtras.find(pTeam->Type);
+    if (it == g_TeamExtras.end() || !it->second.Steamroll) return;
+    pTeam->IsFullStrength = false;
 }
 
 // Called from the TeamClass destructor hook: a dying team must never leave
